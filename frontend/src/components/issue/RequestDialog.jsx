@@ -27,7 +27,8 @@ export function RequestDialog({ issue, contractor, onClose, onLogged }) {
         setMsg(`Hi ${contractor.name.split(" ")[0]}, we have a problem at our rental: ${issue.ai_diagnosis || issue.host_note || issue.trade_needed}. Could you take a look? Thanks!`);
       })
       .finally(() => setLoading(false));
-  }, [contractor, issue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractor?.id, issue.id]);
 
   const log = async (channel) => {
     setBusy(true);

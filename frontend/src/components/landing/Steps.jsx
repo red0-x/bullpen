@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { Mascot } from "@/components/Mascot";
 
@@ -13,8 +13,17 @@ const STEPS = [
 
 export function Steps() {
   const ref = useRef(null);
+  const track = useRef(null);
+  const [dist, setDist] = useState(0);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
-  const x = useTransform(scrollYProgress, [0.05, 0.95], ["0%", "-62%"]);
+  const x = useTransform(scrollYProgress, [0.05, 0.95], [0, -dist]);
+
+  useEffect(() => {
+    const measure = () => setDist(Math.max(0, (track.current?.scrollWidth || 0) - window.innerWidth + 32));
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
 
   return (
     <section id="how" ref={ref} className="relative h-[320vh] bg-cream" data-testid="landing-steps">
@@ -23,7 +32,7 @@ export function Steps() {
           <p className="text-sm font-semibold uppercase tracking-wider text-cocoa">How it works</p>
           <h2 className="mt-2 text-4xl sm:text-5xl lg:text-6xl">Four steps. One calm host.</h2>
         </div>
-        <motion.div style={{ x }} className="mt-10 flex gap-5 sm:gap-8 pl-4 sm:pl-[max(2rem,calc((100vw-80rem)/2+2rem))] w-max">
+        <motion.div ref={track} style={{ x }} className="mt-10 flex gap-5 sm:gap-8 pl-4 pr-8 sm:pl-[max(2rem,calc((100vw-80rem)/2+2rem))] w-max">
           {STEPS.map((s, i) => (
             <article key={s.title} className={`card ${s.bg} w-[80vw] sm:w-[440px] p-6 sm:p-8 flex flex-col`} data-testid={`landing-step-${i + 1}`}>
               <span className="badge badge-neutral !bg-white self-start">Step #{i + 1}</span>

@@ -20,7 +20,7 @@ export function ReviewStep({ draft, setDraft, notice, properties, trades, photo,
   const prop = properties.find((p) => p.id === draft.property_id);
   const amenities = prop?.amenities || [];
   const set = (patch) => setDraft({ ...draft, ...patch });
-  const pickAmenity = (a) => set({ amenity_id: a.id, trade: a.trade });
+  const pickAmenity = (a) => set({ amenity_id: a.id, trade: a.trade, property_id: a.property_id });
   const ready = draft.property_id && draft.trade && draft.urgency;
 
   return (
@@ -68,11 +68,18 @@ export function ReviewStep({ draft, setDraft, notice, properties, trades, photo,
             ))}
           </div>
         </div>
-        {prop && (
+        {prop ? (
           <div>
             <p className="text-sm font-semibold mb-1.5">Which amenity?</p>
             <AmenityPicker amenities={amenities} value={draft.amenity_id} onPick={pickAmenity} />
           </div>
+        ) : (
+          properties.map((p) => (
+            <div key={p.id}>
+              <p className="text-sm font-semibold mb-1.5">{p.name}</p>
+              <AmenityPicker amenities={p.amenities} value={draft.amenity_id} onPick={pickAmenity} />
+            </div>
+          ))
         )}
         <div className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end pt-2">
           <button className="btn btn-secondary" onClick={onBack} data-testid="review-back-button">Start over</button>

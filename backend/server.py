@@ -134,7 +134,7 @@ DEMO_MODELS = {"properties": Property, "amenities": Amenity, "contractors": Cont
 def ser(doc: dict) -> dict:
     out = {}
     for k, v in doc.items():
-        if k in ("_id", "password_hash", "prev_issue_status", "undo"):
+        if k in ("_id", "password_hash"):
             continue
         out[k] = v.isoformat() if isinstance(v, datetime) else v
     return out
@@ -473,6 +473,8 @@ async def diagnose_issue(body: DiagnoseIn, host: dict = Depends(current_host)):
         draft = await diagnose(body.note, b64, catalog, TRADES, now_utc().strftime("%A %Y-%m-%d"))
     except AIError:
         return {"ok": False, "message": "Couldn't read that right now. Tell us what broke below."}
+    if not draft.get("can_tell"):
+        draft["diagnosis"] = None
     prop_ids = {p["id"] for p in catalog}
     am = {a["id"]: a for p in catalog for a in p["amenities"]}
     if draft.get("property_id") not in prop_ids:
@@ -486,7 +488,8 @@ async def diagnose_issue(body: DiagnoseIn, host: dict = Depends(current_host)):
 
 @api.get("/issues/open-for")
 async def open_issue_for(amenity_id: str, host: dict = Depends(current_host)):
-    doc = await db.issues.find_one({"host_id": host["id"], "amenity_id": amenity_id, "status": {"$in": OPEN_STATES}},
+    doc = await db.issues.find_one({"host_id": host["id"], "amenity_id": amenity_id, "status": {"$in": OPEN_STATES},
+                                    "demo": {"$ne": True}},
                                    {"_id": 0}, sort=[("created_at", -1)])
     return {"issue": ser(doc) if doc else None}
 
@@ -590,16 +593,32 @@ async def draft_request(issue_id: str, body: DraftIn, host: dict = Depends(curre
         return {"message": template_message(ctx), "ai": False}
 
 
+async def sync_issue_status(issue_id: str):
+    reqs = await db.requests.find({"issue_id": issue_id}, {"_id": 0}).to_list(200)
+    booked = [r for r in reqs if r.get("response") == "booked"]
+    if booked:
+        latest = max(booked, key=lambda r: r["responded_at"])
+        st = {"status": "scheduled", "scheduled_for": latest.get("scheduled_for")}
+    else:
+        st = {"status": "waiting" if any(not r.get("response") for r in reqs) else "open", "scheduled_for": None}
+    await db.issues.update_one({"id": issue_id}, {"$set": {**st, "updated_at": now_utc()}})
+
+
 @api.post("/requests")
 async def log_request(body: RequestIn, host: dict = Depends(current_host)):
     issue = await get_owned("issues", body.issue_id, host["id"])
-    await get_owned("contractors", body.contractor_id, host["id"])
+    prop = await get_owned("properties", issue["property_id"], host["id"])
+    c = await get_owned("contractors", body.contractor_id, host["id"])
+    if c["status"] != "active" or not covers(c, {"trade": issue["trade_needed"] or ""}, prop):
+        raise HTTPException(400, "That contractor doesn't cover this job.")
+    if await db.requests.find_one({"issue_id": body.issue_id, "contractor_id": body.contractor_id}):
+        raise HTTPException(400, "You've already asked them about this issue.")
     now = now_utc()
     req = ContractorRequest(host_id=host["id"], issue_id=body.issue_id, contractor_id=body.contractor_id,
                             drafted_message=body.message, sent_at=now, channel=body.channel)
-    doc = {**req.model_dump(), "prev_issue_status": issue["status"]}
+    doc = req.model_dump()
     await db.requests.insert_one(doc)
-    await db.issues.update_one({"id": body.issue_id}, {"$set": {"status": "waiting", "updated_at": now}})
+    await sync_issue_status(body.issue_id)
     await db.contractors.update_one({"id": body.contractor_id}, {"$set": {"last_contacted": now}})
     return ser(doc)
 
@@ -608,28 +627,23 @@ async def log_request(body: RequestIn, host: dict = Depends(current_host)):
 async def undo_request(request_id: str, host: dict = Depends(current_host)):
     req = await get_owned("requests", request_id, host["id"])
     await db.requests.delete_one({"id": request_id})
-    await db.issues.update_one({"id": req["issue_id"]},
-                               {"$set": {"status": req.get("prev_issue_status", "open"), "updated_at": now_utc()}})
+    await sync_issue_status(req["issue_id"])
     return {"ok": True}
 
 
 @api.post("/requests/{request_id}/response")
 async def request_response(request_id: str, body: ResponseIn, host: dict = Depends(current_host)):
     req = await get_owned("requests", request_id, host["id"])
-    issue = await get_owned("issues", req["issue_id"], host["id"])
+    if req.get("response"):
+        raise HTTPException(400, "You've already logged a reply for this request.")
     if body.response == "booked" and not body.scheduled_for:
         raise HTTPException(400, "Pick the date they're coming.")
     now = now_utc()
     minutes = None if body.response == "no_answer" else max(1, int((now - req["sent_at"]).total_seconds() // 60))
     await db.requests.update_one({"id": request_id}, {"$set": {
         "response": body.response, "responded_at": now, "response_minutes": minutes,
-        "undo": {"issue_status": issue["status"], "scheduled_for": issue.get("scheduled_for")}}})
-    if body.response == "booked":
-        issue_set = {"status": "scheduled", "scheduled_for": body.scheduled_for}
-    else:
-        pending = await db.requests.count_documents({"issue_id": issue["id"], "response": None})
-        issue_set = {"status": "waiting" if pending else "open"}
-    await db.issues.update_one({"id": issue["id"]}, {"$set": {**issue_set, "updated_at": now}})
+        "scheduled_for": body.scheduled_for if body.response == "booked" else None}})
+    await sync_issue_status(req["issue_id"])
     await db.contractors.update_one({"id": req["contractor_id"]}, {"$set": {"last_contacted": now}})
     return {"ok": True}
 
@@ -637,13 +651,11 @@ async def request_response(request_id: str, body: ResponseIn, host: dict = Depen
 @api.post("/requests/{request_id}/response/undo")
 async def undo_response(request_id: str, host: dict = Depends(current_host)):
     req = await get_owned("requests", request_id, host["id"])
-    prev = req.get("undo")
-    if not prev:
+    if not req.get("response"):
         raise HTTPException(400, "Nothing to undo.")
     await db.requests.update_one({"id": request_id}, {"$set": {"response": None, "responded_at": None,
-                                                               "response_minutes": None, "undo": None}})
-    await db.issues.update_one({"id": req["issue_id"]}, {"$set": {
-        "status": prev["issue_status"], "scheduled_for": prev["scheduled_for"], "updated_at": now_utc()}})
+                                                               "response_minutes": None, "scheduled_for": None}})
+    await sync_issue_status(req["issue_id"])
     return {"ok": True}
 
 

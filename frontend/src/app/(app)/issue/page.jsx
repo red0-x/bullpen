@@ -49,11 +49,11 @@ function Candidates({ data, onRequest }) {
   const [full, setFull] = useState(false);
   const { candidates, active_total, issue, property, amenity } = data;
   const what = (amenity?.label || issue.trade_needed).toLowerCase();
-  const city = property.name.split(" ")[0];
+  const city = property.city;
   return (
     <section className="card p-5 sm:p-6" data-testid="candidates-section">
       <div className="flex items-end justify-between gap-3 flex-wrap">
-        <h2 className="text-2xl">Top {Math.min(3, candidates.length) || ""} to call</h2>
+        <h2 className="text-2xl">{candidates.length ? `Top ${candidates.length} to call` : "Who to call"}</h2>
         <button className="btn-link" onClick={() => setFull(!full)} data-testid="see-full-bench-button">{full ? "Hide full bench" : "See full bench"}</button>
       </div>
       {active_total === 0 ? (
@@ -114,11 +114,14 @@ function IssueView() {
   const respond = async (req, response, scheduled_for) => {
     try {
       await api.post(`/requests/${req.id}/response`, { response, scheduled_for: scheduled_for || null });
+      toast.dismiss();
       const fresh = await load();
       const undo = { label: "Undo", onClick: async () => { await api.post(`/requests/${req.id}/response/undo`).catch(() => {}); load(); } };
       if (response === "booked") toast.success("Booked. Status: Scheduled.", { action: undo, duration: 10000 });
       else {
-        toast(response === "declined" ? "Marked declined. Moving to the next person." : "Marked no answer. Here's the next backup.", { action: undo, duration: 10000 });
+        const next = fresh?.candidates?.[0];
+        const head = response === "declined" ? "Marked declined." : "Marked no answer.";
+        toast(next ? `${head} Here's the next backup.` : `${head} Nobody else is left on the bench for this.`, { action: undo, duration: 10000 });
         if (fresh?.candidates?.[0]) setAsking(fresh.candidates[0]);
       }
     } catch (e) {

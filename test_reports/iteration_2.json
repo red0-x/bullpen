@@ -1,0 +1,53 @@
+{
+  "summary": "Tested Layer 3 ('Something broke') end to end, plus the new landing page. Backend: new pytest suite test_bullpup_layer3.py with 14 tests, combined with layer1 for 35 total; all pass, stable over 3 parallel runs. Covered: diagnose with text, photo-only (real JPEG, vision works), unclear note and empty input; issue create validation; photo save and serving; open-for, add-to-issue, candidate rules (Tahoe hot tub has only Sierra Spa; Oakland EV has active_total 0; Oakland plumbing has Mike's first); AI draft; request log and undo; no_answer, declined and booked; booked without a date returns 400; undo of a response; isolation (other host gets 404 on issue, photo, delete and add). Frontend (Playwright, 1920 and 390): every landing section renders, Get started goes to /login/?mode=register with the register form, login lands on /fix-it/, mobile nav works. Photo upload shows a preview and the thinking state, then a review step with AI-filled property, trade, urgency and amenity; edits work; confirm opens /issue with the photo. Text-only Tahoe hot tub is prefilled correctly and parses guest arrival. Unclear 'hmm' shows the can't-tell notice. Existing-issue dialog works for Add to it, Start a new one and Cancel. Only-1-backup and no-contractors notices with the add link work. RequestDialog shows the AI badge, the message is editable, Copy text gives status Waiting plus an Undo toast, and Undo works. No answer, try next opens the next contractor's dialog automatically and excludes the one already asked. Declined moves on (all-asked notice), with Undo. Booked opens the date dialog, gives Scheduled with 'Booked for ...', with Undo; it persists after refresh. Open in Messages logs the request. The Fix-it list shows the issues and survives refresh. Issues found: landing horizontal overflow, the unclear path shows no amenity tiles, undo-request status logic, a demo open issue that triggers the dialog, and a city-name bug.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/requests/{id}", "issue": "Undo restores prev_issue_status blindly. (A) Two pending requests, undo the first one: issue becomes 'open' even though the 2nd is still pending (verified). (B) Book via request 2, then click the still-visible 'Logged your request... Undo' toast: the request is deleted but the issue ends up 'waiting' with 0 requests and a stale scheduled_for (verified). Fix: recompute status from the remaining requests (booked -> scheduled, any pending -> waiting, else open) and clear scheduled_for when there is no booked request."},
+      {"endpoint": "GET /api/issues/open-for", "issue": "Does not exclude demo issues. The seeded demo issue 'Kitchen sink draining slowly' (Oakland plumbing, demo:true, status open) triggers 'There's already an open plumbing issue. Add to it?' for every new Oakland plumbing issue. That issue is hidden from GET /api/issues and the Fix-it list (demo excluded), so 'Add to it' sends the host to an issue they can't otherwise see. Make the two consistent: exclude demo in open-for, or show open demo issues in the list."},
+      {"endpoint": "POST /api/requests/{id}/response", "issue": "No guard against responding twice (second declined returns 200 and overwrites undo state). Also POST /api/requests accepts a duplicate request to the same contractor and a contractor who doesn't cover that trade or city (Mike's Plumbing (Oakland) on a Tahoe issue returned 200)."},
+      {"endpoint": "POST /api/issues/diagnose", "issue": "When can_tell=false the AI diagnosis text (e.g. 'The note does not describe a specific issue, so I can't determine...') is still returned. The frontend puts it in 'What's wrong' and it would be saved as ai_diagnosis and used in contractor drafts."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Landing marquee", "issue": "Horizontal overflow: documentElement.scrollWidth 1940 at 1920 and 395 at 390. Cause: landing-marquee has '-rotate-1 scale-[1.02]' and its parent doesn't clip. The page can be swiped sideways on mobile. Fix: add overflow-x:clip (or overflow-hidden) to the landing-page wrapper or the marquee's parent section.", "selector": "[data-testid=landing-marquee]", "priority": "MEDIUM"},
+      {"component": "ReviewStep (can't-tell path)", "issue": "Spec says 'We couldn't tell from the photo. What needs fixing?' WITH amenity tiles. When the AI can't tell, property_id is null (host has 3 properties), so no amenity-pick-* tiles render (count 0) until the host picks a property. Show tiles grouped by property, or a property chooser right next to the notice. The notice also says 'from the photo' when no photo was given.", "selector": "[data-testid=review-notice], [data-testid^=amenity-pick-]", "priority": "MEDIUM"},
+      {"component": "Issue page Candidates", "issue": "City in 'You have no X contractors at {city}' is property.name.split(' ')[0]. Joshua Tree A-Frame would read 'at Joshua'. Use property.city or the full property name.", "selector": "[data-testid=no-contractors-notice]", "priority": "LOW"},
+      {"component": "Issue page Candidates", "issue": "Heading reads 'Top  to call' when there are 0 candidates (EV and all-asked cases).", "selector": "[data-testid=candidates-section] h2", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Declined with no one left", "issue": "Toast says 'Marked declined. Moving to the next person.' even when no candidates remain. The all-asked notice shows correctly.", "affected_selectors": ["[data-testid=all-asked-notice]"]},
+      {"flow": "Stale Undo toasts", "issue": "'Logged your request' Undo toast (10s) stays clickable after the host records a response. Clicking it triggers backend issue (B) above. Dismiss older toasts on response, or fix the backend recompute.", "affected_selectors": ["[data-sonner-toast]"]}
+    ],
+    "design_issues": [
+      {"screen": "Something broke thinking state", "issues": ["The sniff mascot was not painted on first frame (blank space above 'Sniffing it out…'). Preload /mascot/pup-sniff.webp."]},
+      {"screen": "Booked date dialog / capture arrival", "issues": ["Uses the browser's native datetime-local picker, not a styled calendar. Clicking 'Save booking' with an empty date silently does nothing (no inline error)."]},
+      {"screen": "Login/register left panel", "issues": ["The glove mascot inside the framed card is cropped at the top and left edge (face cut)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_bullpup_layer3.py", "/app/backend/tests/test_bullpup_layer1.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix landing horizontal overflow caused by the rotated/scaled marquee (overflow-x: clip on the wrapper)",
+    "Can't-tell path: show amenity tiles without requiring a property first (or with an inline property picker); drop the AI 'can't determine' text from the diagnosis field when can_tell=false",
+    "DELETE /api/requests/{id}: recompute issue status from the remaining requests and clear scheduled_for when there is no booked request",
+    "Make open-for and the Fix-it list consistent about demo issues (seeded open Oakland plumbing demo issue)",
+    "Use property.city in the no-contractors notice; hide the count in 'Top N to call' when N is 0; adjust the declined toast when no one is left",
+    "Optional: reject a duplicate response or request and a contractor who doesn't cover that trade or city"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 686 lines, close to the 700-line limit. Split the issues/requests routes into their own module.",
+    "undo_request/request_response store a single 'undo' snapshot. Several responses or undos in a row can restore stale status; deriving status from requests is more robust.",
+    "RequestDialog useEffect depends on the issue object, so any reload while the dialog is open re-requests an AI draft and overwrites the host's edits.",
+    "Photo endpoint always returns image/jpeg. Fine because the client converts to JPEG, but API clients posting PNG get the wrong content type.",
+    "Request/response actions update contractors.last_contacted on demo contractors. There is no revert on undo."
+  ],
+  "updated_files": ["/app/backend/tests/test_bullpup_layer3.py (new)", "/app/backend/tests/test_bullpup_layer1.py (teardown now deletes only its own login_attempts; the old global 'test_' regex wiped other xdist workers' counters and made the lockout test flaky)"],
+  "success_rate": {"backend": "100% (35/35 incl. layer1)", "frontend": "~90% (all core flows pass; overflow + can't-tell tiles deviations)"},
+  "test_credentials": "host@bullpup.example.com / bullpup123 (from /app/memory/test_credentials.md) works",
+  "seed_data_creation": "Created TEST_ issues, requests and photos on the demo host plus temporary test_* users. All deleted: 0 non-demo issues, 0 photos, 0 test_ users remain. Side effect: last_contacted was updated on a few demo contractors (Mike's, Bay Flow, Alpine, Tahoe Pipe).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && REACT_APP_BACKEND_URL=<url> python -m pytest tests/test_bullpup_layer3.py tests/test_bullpup_layer1.py (pytest.ini forces -n 2 loadscope; use -n 0 for serial). layer3 needs /tmp/hottub.jpg and /tmp/pipe.jpg (download from Unsplash: photo-1572331165267-854da2b10ccc is actually a POOL, photo-1585704032915-c3400ca199e7 is a bath faucet). Diagnose with a faucet photo only gives can_tell=false (no visible defect). With a note it gives Plumbing. Do NOT remove sonner toast DOM nodes in Playwright: it crashes React (insertBefore error). Click toast Undo via [data-sonner-toast] button:has-text('Undo'). The Oakland plumbing amenity has an open demo issue, so creating an Oakland plumbing issue in the UI shows the existing-issue dialog. Create test issues via the API instead.",
+  "rca of the issue": "Landing overflow: transform -rotate-1 scale-[1.02] on landing-marquee increases its bounding box past the viewport, and body/html have overflow-x: visible, so scrollWidth exceeds clientWidth by 5-20px. Undo request: undo_request sets issue.status = req.prev_issue_status (captured when the request was created) without considering later requests or bookings. Can't-tell tiles: ReviewStep renders AmenityPicker only when `prop` (selected property) exists, and the AI returns property_id null when it can't tell."
+}

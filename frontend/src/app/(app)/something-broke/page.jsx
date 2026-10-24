@@ -14,6 +14,7 @@ import { ReviewStep } from "@/components/broke/ReviewStep";
 
 const EMPTY = { photo: null, note: "", arrival: "" };
 const CANT_TELL = "We couldn't tell from the photo. What needs fixing?";
+const CANT_TELL_NOTE = "We couldn't tell from your note. What needs fixing?";
 
 export default function SomethingBrokePage() {
   const router = useRouter();
@@ -42,7 +43,8 @@ export default function SomethingBrokePage() {
       else {
         const g = data.draft;
         d = { ...d, ...Object.fromEntries(Object.entries(g).filter(([, v]) => v !== null && v !== undefined)), property_id: g.property_id || d.property_id };
-        if (!g.can_tell || !g.trade) msg = CANT_TELL;
+        if (!g.can_tell || !g.trade) msg = input.photo ? CANT_TELL : CANT_TELL_NOTE;
+        if (!g.diagnosis) d.diagnosis = input.note;
         if (g.guest_arrival && !input.arrival) setInput((i) => ({ ...i, arrival: g.guest_arrival.slice(0, 16) }));
       }
     } catch {
@@ -103,6 +105,7 @@ export default function SomethingBrokePage() {
   return (
     <>
       <PageTitle eyebrow="Quick fix" title="Something broke" sub="Snap a photo. Bullpup works out what's wrong and who can fix it. You check everything before anything is saved." />
+      <link rel="preload" as="image" href="/mascot/pup-sniff.webp" />
       {step === "capture" && <CaptureStep value={input} onChange={setInput} onSubmit={diagnose} busy={!props} />}
       {step === "thinking" && (
         <div className="card py-14 flex flex-col items-center text-center" data-testid="diagnose-thinking">

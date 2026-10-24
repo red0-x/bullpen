@@ -30,10 +30,13 @@ def created():
     yield users
     db = _db()
     for uid in users:
+        u = db.users.find_one({"id": uid})
         for c in DOMAIN:
             db[c].delete_many({"host_id": uid})
         db.users.delete_one({"id": uid})
-    db.login_attempts.delete_many({"identifier": {"$regex": "test_"}})
+        # only this worker's attempts (xdist-safe; a global regex wipes other workers' lockout counters)
+        if u:
+            db.login_attempts.delete_many({"identifier": {"$regex": f":{u['email']}$"}})
 
 
 @pytest.fixture(scope="module")

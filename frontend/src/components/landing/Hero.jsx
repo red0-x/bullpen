@@ -67,7 +67,7 @@ export function Hero() {
         </div>
 
         <div className="relative h-[420px] sm:h-[520px]">
-          <motion.div style={{ y: cardsY }} className="absolute inset-0">
+          <motion.div style={{ y: cardsY }} className="absolute inset-0 z-10">
             <FloatCard className="left-0 top-6 sm:-left-6" delay={0.6} testId="hero-card-issue">
               <p className="font-semibold flex items-center gap-1.5"><Wrench size={14} className="text-cap" /> Hot tub not heating</p>
               <span className="badge badge-warn mt-1">Today</span>

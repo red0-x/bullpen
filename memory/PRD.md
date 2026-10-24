@@ -15,11 +15,11 @@ Self-managing STR hosts with 1–5 properties.
 See original statement; layers 1–6.
 
 ## Implemented
+- 2026-10-24 — Layer 3 + landing: public scroll-animated landing at /, new puppy poses + cabin art (generated, same style; originals unchanged), animated Mascot component, Something broke photo/camera flow with GPT-5.4 vision diagnosis (40s timeout, manual fallback), issue page with top 3, request drafts (AI or template), Copy/Open in Messages, No answer/Declined/Booked with undo, Fix-it list of open issues. App home moved to /fix-it/. Tested (iteration_2), fixes applied after.
 - 2026-10-24 — Layer 1: auth, full data model, demo load (idempotent, undo) / reset (confirm), Properties screen with amenity tiles + coverage badges, header + design system, placeholders for Bench / Fix-it / Something broke. Tested (iteration_1), lockout fix applied after.
 
 ## Backlog
 - P0: Layer 2 (import contacts with AI + manual add, ranked bench, pinning)
-- P0: Layer 3 (Something broke photo flow, top 3, request drafts)
 - P1: Layer 4 (outcomes, re-rank, undo), Layer 5 (coverage gaps, stale, Fix-it home)
 - P2: Layer 6 (Bench watch), maintenance schedules, Resend email, paid access/trial
 

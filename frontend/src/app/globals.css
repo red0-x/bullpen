@@ -17,6 +17,7 @@
 
 html,
 body {
+  overflow-x: clip;
   background: var(--cream);
   color: var(--espresso);
   font-family: var(--font-body), sans-serif;
