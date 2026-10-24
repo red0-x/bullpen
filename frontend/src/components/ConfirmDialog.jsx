@@ -2,7 +2,7 @@
 
 import * as Dialog from "@radix-ui/react-alert-dialog";
 
-export function ConfirmDialog({ open, onOpenChange, title, body, confirmLabel, onConfirm, busy }) {
+export function ConfirmDialog({ open, onOpenChange, title, body, confirmLabel, onConfirm, busy, secondaryLabel, onSecondary, children }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -13,8 +13,12 @@ export function ConfirmDialog({ open, onOpenChange, title, body, confirmLabel, o
         >
           <Dialog.Title className="font-head text-2xl text-espresso">{title}</Dialog.Title>
           <Dialog.Description className="mt-2 text-cocoa">{body}</Dialog.Description>
+          {children}
           <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
             <Dialog.Cancel className="btn btn-secondary" data-testid="confirm-dialog-cancel-button">Cancel</Dialog.Cancel>
+            {secondaryLabel && (
+              <button className="btn btn-secondary" onClick={onSecondary} disabled={busy} data-testid="confirm-dialog-secondary-button">{secondaryLabel}</button>
+            )}
             <button className="btn btn-primary" onClick={onConfirm} disabled={busy} data-testid="confirm-dialog-confirm-button">
               {busy ? "Working…" : confirmLabel}
             </button>

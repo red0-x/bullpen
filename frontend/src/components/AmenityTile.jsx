@@ -2,6 +2,11 @@ import { Waves, Bath, Droplets, Refrigerator, Thermometer, Sparkles, Plug } from
 
 const ICONS = { pool: Waves, hot_tub: Bath, plumbing: Droplets, kitchen_appliances: Refrigerator, hvac: Thermometer, cleaning: Sparkles, custom: Plug };
 
+export function AmenityIcon({ type, size = 18 }) {
+  const Icon = ICONS[type] || Plug;
+  return <Icon size={size} aria-hidden />;
+}
+
 function CoverageBadge({ count, testId }) {
   if (count === 0) return <span className="badge badge-warn" data-testid={testId}>No contractors</span>;
   if (count === 1) return <span className="badge badge-neutral" data-testid={testId}>1 contractor</span>;

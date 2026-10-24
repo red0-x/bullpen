@@ -15,8 +15,12 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
 from starlette.middleware.cors import CORSMiddleware
 
+import base64
 from scoring import score_contractor, rank, covers
-from seed import build_demo
+from seed import build_demo, AMENITY_TRADES
+from ai import diagnose, draft_message, template_message, AIError
+
+TRADES = sorted(set(AMENITY_TRADES.values()) | {"Electrical"})
 
 client = AsyncIOMotorClient(os.environ["MONGO_URL"], tz_aware=True)
 db = client[os.environ["DB_NAME"]]
@@ -88,6 +92,8 @@ class Issue(DocBase):
     urgency: Optional[Literal["today", "this_week", "can_wait"]] = None
     guest_arrival: Optional[datetime] = None
     status: Literal["open", "waiting", "scheduled", "resolved"] = "open"
+    scheduled_for: Optional[datetime] = None
+    updates: List[dict] = []
     updated_at: datetime = Field(default_factory=now_utc)
 
 
@@ -99,6 +105,7 @@ class ContractorRequest(DocBase):
     response: Optional[Literal["no_answer", "declined", "booked"]] = None
     responded_at: Optional[datetime] = None
     response_minutes: Optional[int] = None
+    channel: Optional[Literal["copy", "messages"]] = None
 
 
 class JobOutcome(DocBase):
@@ -127,7 +134,7 @@ DEMO_MODELS = {"properties": Property, "amenities": Amenity, "contractors": Cont
 def ser(doc: dict) -> dict:
     out = {}
     for k, v in doc.items():
-        if k in ("_id", "password_hash"):
+        if k in ("_id", "password_hash", "prev_issue_status", "undo"):
             continue
         out[k] = v.isoformat() if isinstance(v, datetime) else v
     return out
@@ -333,6 +340,12 @@ async def demo_counts(host_id: str) -> dict:
 
 
 async def clear_demo(host_id: str):
+    demo_props = [p["id"] for p in await db.properties.find({"host_id": host_id, "demo": True}, {"id": 1}).to_list(100)]
+    linked = [i["id"] for i in await db.issues.find({"host_id": host_id, "property_id": {"$in": demo_props}},
+                                                    {"id": 1}).to_list(5000)]
+    await db.issues.delete_many({"host_id": host_id, "id": {"$in": linked}})
+    await db.requests.delete_many({"host_id": host_id, "issue_id": {"$in": linked}})
+    await db.issue_photos.delete_many({"host_id": host_id, "issue_id": {"$in": linked}})
     for coll in DOMAIN:
         await db[coll].delete_many({"host_id": host_id, "demo": True})
 
@@ -370,6 +383,268 @@ async def demo_reset(host: dict = Depends(current_host)):
 async def demo_clear(host: dict = Depends(current_host)):
     await clear_demo(host["id"])
     return {"status": "cleared"}
+
+
+# ---------- Something broke (issues + requests) ----------
+MAX_PHOTO_B64 = 7_000_000
+OPEN_STATES = ["open", "waiting", "scheduled"]
+
+
+class DiagnoseIn(BaseModel):
+    photo_base64: Optional[str] = Field(None, max_length=MAX_PHOTO_B64)
+    note: str = Field("", max_length=1000)
+
+
+class IssueIn(BaseModel):
+    property_id: str
+    amenity_id: Optional[str] = None
+    trade_needed: str
+    urgency: Literal["today", "this_week", "can_wait"]
+    host_note: str = Field("", max_length=1000)
+    ai_diagnosis: Optional[str] = Field(None, max_length=1500)
+    guest_arrival: Optional[datetime] = None
+    photo_base64: Optional[str] = Field(None, max_length=MAX_PHOTO_B64)
+
+
+class IssueAddIn(BaseModel):
+    note: str = Field("", max_length=1000)
+    photo_base64: Optional[str] = Field(None, max_length=MAX_PHOTO_B64)
+
+
+class DraftIn(BaseModel):
+    contractor_id: str
+    guest_arrival_text: Optional[str] = Field(None, max_length=80)
+
+
+class RequestIn(BaseModel):
+    issue_id: str
+    contractor_id: str
+    message: str = Field(min_length=1, max_length=1500)
+    channel: Literal["copy", "messages"]
+
+
+class ResponseIn(BaseModel):
+    response: Literal["no_answer", "declined", "booked"]
+    scheduled_for: Optional[datetime] = None
+
+
+async def host_catalog(host_id: str) -> list:
+    props = await db.properties.find({"host_id": host_id}, {"_id": 0}).sort("created_at", 1).to_list(100)
+    amenities = await db.amenities.find({"host_id": host_id}, {"_id": 0}).to_list(1000)
+    for p in props:
+        p["amenities"] = [a for a in amenities if a["property_id"] == p["id"]]
+    return props
+
+
+async def get_owned(coll: str, doc_id: str, host_id: str) -> dict:
+    doc = await db[coll].find_one({"id": doc_id, "host_id": host_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Not found")
+    return doc
+
+
+async def save_photo(host_id: str, issue_id: str, b64: Optional[str]) -> Optional[str]:
+    if not b64:
+        return None
+    if "," in b64[:80]:
+        b64 = b64.split(",", 1)[1]
+    try:
+        base64.b64decode(b64, validate=True)
+    except Exception:
+        raise HTTPException(400, "That photo couldn't be read. Try another one.")
+    pid = str(uuid.uuid4())
+    await db.issue_photos.insert_one({"id": pid, "host_id": host_id, "issue_id": issue_id, "data": b64,
+                                      "created_at": now_utc()})
+    return pid
+
+
+@api.get("/trades")
+async def trades(host: dict = Depends(current_host)):
+    return TRADES
+
+
+@api.post("/issues/diagnose")
+async def diagnose_issue(body: DiagnoseIn, host: dict = Depends(current_host)):
+    if not body.photo_base64 and not body.note.strip():
+        raise HTTPException(400, "Add a photo or tell us what broke.")
+    catalog = await host_catalog(host["id"])
+    b64 = body.photo_base64.split(",", 1)[1] if body.photo_base64 and "," in body.photo_base64[:80] else body.photo_base64
+    try:
+        draft = await diagnose(body.note, b64, catalog, TRADES, now_utc().strftime("%A %Y-%m-%d"))
+    except AIError:
+        return {"ok": False, "message": "Couldn't read that right now. Tell us what broke below."}
+    prop_ids = {p["id"] for p in catalog}
+    am = {a["id"]: a for p in catalog for a in p["amenities"]}
+    if draft.get("property_id") not in prop_ids:
+        draft["property_id"] = None
+    if draft.get("amenity_id") not in am or (draft["property_id"] and am[draft["amenity_id"]]["property_id"] != draft["property_id"]):
+        draft["amenity_id"] = None
+    if draft["amenity_id"] and not draft["property_id"]:
+        draft["property_id"] = am[draft["amenity_id"]]["property_id"]
+    return {"ok": True, "draft": draft}
+
+
+@api.get("/issues/open-for")
+async def open_issue_for(amenity_id: str, host: dict = Depends(current_host)):
+    doc = await db.issues.find_one({"host_id": host["id"], "amenity_id": amenity_id, "status": {"$in": OPEN_STATES}},
+                                   {"_id": 0}, sort=[("created_at", -1)])
+    return {"issue": ser(doc) if doc else None}
+
+
+@api.post("/issues")
+async def create_issue(body: IssueIn, host: dict = Depends(current_host)):
+    await get_owned("properties", body.property_id, host["id"])
+    if body.amenity_id:
+        a = await get_owned("amenities", body.amenity_id, host["id"])
+        if a["property_id"] != body.property_id:
+            raise HTTPException(400, "That amenity belongs to another property.")
+    if body.trade_needed not in TRADES:
+        raise HTTPException(400, "Pick a trade from the list.")
+    issue = Issue(host_id=host["id"], **body.model_dump(exclude={"photo_base64"}))
+    photo_id = await save_photo(host["id"], issue.id, body.photo_base64)
+    if photo_id:
+        issue.photo_url = f"/api/issues/{issue.id}/photo/{photo_id}"
+    await db.issues.insert_one(issue.model_dump())
+    return ser(issue.model_dump())
+
+
+@api.post("/issues/{issue_id}/add")
+async def add_to_issue(issue_id: str, body: IssueAddIn, host: dict = Depends(current_host)):
+    await get_owned("issues", issue_id, host["id"])
+    photo_id = await save_photo(host["id"], issue_id, body.photo_base64)
+    update = {"note": body.note, "photo_url": f"/api/issues/{issue_id}/photo/{photo_id}" if photo_id else None,
+              "at": now_utc()}
+    await db.issues.update_one({"id": issue_id}, {"$push": {"updates": update}, "$set": {"updated_at": now_utc()}})
+    return {"ok": True, "issue_id": issue_id}
+
+
+@api.delete("/issues/{issue_id}")
+async def delete_issue(issue_id: str, host: dict = Depends(current_host)):
+    await get_owned("issues", issue_id, host["id"])
+    for coll in ("issues",):
+        await db[coll].delete_one({"id": issue_id, "host_id": host["id"]})
+    await db.requests.delete_many({"issue_id": issue_id, "host_id": host["id"]})
+    await db.issue_photos.delete_many({"issue_id": issue_id, "host_id": host["id"]})
+    return {"ok": True}
+
+
+@api.get("/issues/{issue_id}/photo/{photo_id}")
+async def issue_photo(issue_id: str, photo_id: str, host: dict = Depends(current_host)):
+    doc = await db.issue_photos.find_one({"id": photo_id, "issue_id": issue_id, "host_id": host["id"]})
+    if not doc:
+        raise HTTPException(404, "Photo not found")
+    return Response(base64.b64decode(doc["data"]), media_type="image/jpeg",
+                    headers={"Cache-Control": "private, max-age=86400"})
+
+
+@api.get("/issues")
+async def list_issues(host: dict = Depends(current_host)):
+    docs = await db.issues.find({"host_id": host["id"], "status": {"$in": OPEN_STATES}, "demo": {"$ne": True}},
+                                {"_id": 0}).sort("created_at", -1).to_list(200)
+    props = {p["id"]: p for p in await host_catalog(host["id"])}
+    out = []
+    for d in docs:
+        p = props.get(d["property_id"], {})
+        a = next((x for x in p.get("amenities", []) if x["id"] == d.get("amenity_id")), None)
+        out.append(ser({**d, "property_name": p.get("name"), "amenity_label": a["label"] if a else None}))
+    return out
+
+
+async def issue_bench(host_id: str, issue: dict, prop: dict, contacted: set) -> list:
+    contractors = await scored_contractors(host_id)
+    slot = {"trade": issue["trade_needed"] or ""}
+    bench = rank([c for c in contractors if covers(c, slot, prop)])
+    return [public_contractor({**c, "contacted": c["id"] in contacted}) for c in bench]
+
+
+@api.get("/issues/{issue_id}")
+async def get_issue(issue_id: str, host: dict = Depends(current_host)):
+    issue = await get_owned("issues", issue_id, host["id"])
+    prop = await get_owned("properties", issue["property_id"], host["id"])
+    amenity = await db.amenities.find_one({"id": issue.get("amenity_id"), "host_id": host["id"]}, {"_id": 0})
+    reqs = await db.requests.find({"issue_id": issue_id, "host_id": host["id"]}, {"_id": 0}).sort("created_at", 1).to_list(100)
+    bench = await issue_bench(host["id"], issue, prop, {r["contractor_id"] for r in reqs})
+    names = {c["id"]: c for c in bench}
+    candidates = [c for c in bench if c["rank"] and not c["contacted"]][:3]
+    return {
+        "issue": ser(issue), "property": ser(prop), "amenity": ser(amenity) if amenity else None,
+        "requests": [ser({**r, "contractor": {k: names.get(r["contractor_id"], {}).get(k) for k in
+                                               ("name", "business_name", "phone")}}) for r in reqs],
+        "candidates": candidates, "bench": bench,
+        "active_total": len([c for c in bench if c["rank"]]),
+    }
+
+
+@api.post("/issues/{issue_id}/draft")
+async def draft_request(issue_id: str, body: DraftIn, host: dict = Depends(current_host)):
+    issue = await get_owned("issues", issue_id, host["id"])
+    prop = await get_owned("properties", issue["property_id"], host["id"])
+    c = await get_owned("contractors", body.contractor_id, host["id"])
+    ctx = {"host_name": host["name"], "contractor_name": c["name"], "business": c["business_name"],
+           "property": prop["name"], "address": prop["address"],
+           "problem": issue.get("ai_diagnosis") or issue.get("host_note") or issue["trade_needed"],
+           "urgency": issue.get("urgency"), "guest_arrival": body.guest_arrival_text}
+    try:
+        return {"message": await draft_message(ctx), "ai": True}
+    except AIError:
+        return {"message": template_message(ctx), "ai": False}
+
+
+@api.post("/requests")
+async def log_request(body: RequestIn, host: dict = Depends(current_host)):
+    issue = await get_owned("issues", body.issue_id, host["id"])
+    await get_owned("contractors", body.contractor_id, host["id"])
+    now = now_utc()
+    req = ContractorRequest(host_id=host["id"], issue_id=body.issue_id, contractor_id=body.contractor_id,
+                            drafted_message=body.message, sent_at=now, channel=body.channel)
+    doc = {**req.model_dump(), "prev_issue_status": issue["status"]}
+    await db.requests.insert_one(doc)
+    await db.issues.update_one({"id": body.issue_id}, {"$set": {"status": "waiting", "updated_at": now}})
+    await db.contractors.update_one({"id": body.contractor_id}, {"$set": {"last_contacted": now}})
+    return ser(doc)
+
+
+@api.delete("/requests/{request_id}")
+async def undo_request(request_id: str, host: dict = Depends(current_host)):
+    req = await get_owned("requests", request_id, host["id"])
+    await db.requests.delete_one({"id": request_id})
+    await db.issues.update_one({"id": req["issue_id"]},
+                               {"$set": {"status": req.get("prev_issue_status", "open"), "updated_at": now_utc()}})
+    return {"ok": True}
+
+
+@api.post("/requests/{request_id}/response")
+async def request_response(request_id: str, body: ResponseIn, host: dict = Depends(current_host)):
+    req = await get_owned("requests", request_id, host["id"])
+    issue = await get_owned("issues", req["issue_id"], host["id"])
+    if body.response == "booked" and not body.scheduled_for:
+        raise HTTPException(400, "Pick the date they're coming.")
+    now = now_utc()
+    minutes = None if body.response == "no_answer" else max(1, int((now - req["sent_at"]).total_seconds() // 60))
+    await db.requests.update_one({"id": request_id}, {"$set": {
+        "response": body.response, "responded_at": now, "response_minutes": minutes,
+        "undo": {"issue_status": issue["status"], "scheduled_for": issue.get("scheduled_for")}}})
+    if body.response == "booked":
+        issue_set = {"status": "scheduled", "scheduled_for": body.scheduled_for}
+    else:
+        pending = await db.requests.count_documents({"issue_id": issue["id"], "response": None})
+        issue_set = {"status": "waiting" if pending else "open"}
+    await db.issues.update_one({"id": issue["id"]}, {"$set": {**issue_set, "updated_at": now}})
+    await db.contractors.update_one({"id": req["contractor_id"]}, {"$set": {"last_contacted": now}})
+    return {"ok": True}
+
+
+@api.post("/requests/{request_id}/response/undo")
+async def undo_response(request_id: str, host: dict = Depends(current_host)):
+    req = await get_owned("requests", request_id, host["id"])
+    prev = req.get("undo")
+    if not prev:
+        raise HTTPException(400, "Nothing to undo.")
+    await db.requests.update_one({"id": request_id}, {"$set": {"response": None, "responded_at": None,
+                                                               "response_minutes": None, "undo": None}})
+    await db.issues.update_one({"id": req["issue_id"]}, {"$set": {
+        "status": prev["issue_status"], "scheduled_for": prev["scheduled_for"], "updated_at": now_utc()}})
+    return {"ok": True}
 
 
 @api.get("/")

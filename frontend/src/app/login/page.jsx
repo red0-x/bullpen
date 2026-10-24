@@ -9,13 +9,18 @@ export default function LoginPage() {
   const { user, login, register } = useAuth();
   const router = useRouter();
   const [mode, setMode] = useState("login");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("mode") === "register") {
+      setMode("register");
+    }
+  }, []);
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (user) {
-      router.replace("/properties/");
+      router.replace("/fix-it/");
     }
   }, [user, router]);
 
@@ -39,10 +44,10 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
       <section className="hidden lg:flex flex-col justify-between p-12 border-r-[1.5px] border-line">
-        <div className="flex items-center gap-3">
+        <a href="/" className="flex items-center gap-3" data-testid="login-home-link">
           <img src="/mascot/pup-head.webp" alt="Bullpup puppy" className="h-12 w-12 rounded-xl border-[1.5px] border-line" />
           <span className="font-head text-3xl">Bullpup</span>
-        </div>
+        </a>
         <div className="animate-rise">
           <img src="/mascot/pup-glove.webp" alt="Bullpup puppy holding a glove" className="w-72 rounded-card border-[1.5px] border-line" />
           <h1 className="mt-8 text-5xl lg:text-6xl text-espresso max-w-lg">Always a backup in the bullpen.</h1>

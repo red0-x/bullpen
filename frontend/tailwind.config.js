@@ -21,8 +21,9 @@ module.exports = {
       keyframes: {
         rise: { from: { opacity: "0", transform: "translateY(10px)" }, to: { opacity: "1", transform: "none" } },
         wag: { "0%,100%": { transform: "rotate(0deg)" }, "50%": { transform: "rotate(-6deg)" } },
+        marquee: { from: { transform: "translateX(0)" }, to: { transform: "translateX(-50%)" } },
       },
-      animation: { rise: "rise 0.45s ease-out both", wag: "wag 0.6s ease-in-out" },
+      animation: { rise: "rise 0.45s ease-out both", wag: "wag 0.6s ease-in-out", marquee: "marquee 40s linear infinite" },
     },
   },
   plugins: [require("tailwindcss-animate")],

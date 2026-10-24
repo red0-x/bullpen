@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogOut, Siren } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { Mascot } from "./Mascot";
 
 const NAV = [
   { href: "/bench/", label: "Bench", id: "bench" },
   { href: "/properties/", label: "Properties", id: "properties" },
-  { href: "/", label: "Fix-it list", id: "fixit" },
+  { href: "/fix-it/", label: "Fix-it list", id: "fixit" },
 ];
 
 function NavLinks({ className, prefix = "nav" }) {
@@ -16,7 +17,7 @@ function NavLinks({ className, prefix = "nav" }) {
   return (
     <nav className={className} aria-label="Main">
       {NAV.map((n) => {
-        const active = n.href === "/" ? path === "/" : path?.startsWith(n.href.slice(0, -1));
+        const active = path?.startsWith(n.href.slice(0, -1));
         return (
           <Link
             key={n.id}
@@ -39,8 +40,10 @@ export function Header() {
   return (
     <header className="border-b-[1.5px] border-line bg-cream" data-testid="app-header">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 py-3 flex items-center gap-3">
-        <Link href="/" className="flex items-center gap-2 shrink-0 group" data-testid="header-home-link">
-          <img src="/mascot/pup-head.webp" alt="Bullpup puppy" className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl border-[1.5px] border-line group-hover:animate-wag" />
+        <Link href="/fix-it/" className="flex items-center gap-2 shrink-0 group" data-testid="header-home-link">
+          <span className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl border-[1.5px] border-line overflow-hidden bg-[#FCF4EC]">
+            <Mascot pose="head" motion="breathe" className="w-full h-full" />
+          </span>
           <span className="font-head text-xl sm:text-2xl text-espresso" data-testid="header-wordmark">Bullpup</span>
         </Link>
         <NavLinks className="hidden md:flex items-center gap-1 ml-4" />
