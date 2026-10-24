@@ -1,0 +1,42 @@
+{
+  "summary": "Bullpup Layer 1 tested end to end. Backend: 21 pytest cases; 20 pass. Covered auth (register, login, logout, me, refresh, Bearer fallback, CORS, bcrypt), demo load/already_loaded/reset/clear, properties tiles, contractor scoring rules, bench endpoint and per-host data isolation. Frontend (Playwright, 1920 and 390): register lands on /properties/, protected-route redirect, session survives refresh, logout, friendly wrong-password error, empty state, Load demo (3 cards, 15 tiles), Undo toast removes data, double load shows 'already loaded' with no duplicates, reset dialog cancel/confirm (new ids, counts unchanged), EV charger 'No contractors', Tahoe hot tub '1 contractor', nav and placeholder pages, no horizontal overflow at 390px. Only failure: brute-force lockout never triggers behind the ingress.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/auth/login", "issue": "Brute-force lockout does not work in the deployed environment. 6 bad logins all returned 401 and none returned 429. The identifier uses request.client.host, which is the ingress/proxy pod IP and changes between requests (seen: 10.201.1.194 and 10.201.4.160, 3 attempts each). Fix: build the identifier from the first entry of X-Forwarded-For (fall back to client.host), or key on email only.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "startup", "issue": "Demo host host@bullpup.example.com exists in the DB, but no startup seed creates it. On a fresh DB the documented credentials won't work. Add an idempotent seed_host on startup."},
+      {"endpoint": "POST /api/auth/refresh", "issue": "The frontend never calls refresh: no 401 interceptor in lib/api.js. After the 12h access token expires the user is logged out even though the 7-day refresh token is valid."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Header at 390px", "issues": ["The 'Something broke' button text wraps onto 2 lines. Use whitespace-nowrap or a shorter label/icon-only on xs."]},
+      {"screen": "Properties", "issues": ["'Load demo data' stays a primary button after demo is loaded; consider hiding/secondary styling once loaded (it only shows 'already loaded' toast)."]},
+      {"screen": "Header", "issues": ["Nav links render twice (desktop + mobile nav) with the same data-testid (nav-*-link). Tests must use :visible. Consider unique testids for the mobile nav."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_bullpup_layer1.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix login lockout identifier to use X-Forwarded-For first IP (currently ineffective behind ingress)",
+    "Add idempotent startup seed for demo host host@bullpup.example.com",
+    "Add axios 401 interceptor that calls /auth/refresh and retries",
+    "Prevent 'Something broke' header button wrapping at 390px"
+  ],
+  "critical_code_review_comments": [
+    "server.py login: identifier based on request.client.host breaks lockout behind proxy",
+    "scored_contractors loads all outcomes/requests with to_list(20000) per request; fine for demo scale but needs aggregation later",
+    "/api/auth/refresh does not check that the user still exists before issuing new tokens",
+    "list_properties ranks contractors once per amenity in Python: O(amenities*contractors). Acceptable at current scale"
+  ],
+  "updated_files": ["/app/backend/tests/test_bullpup_layer1.py"],
+  "success_rate": {"backend": "95% (20/21)", "frontend": "100%"},
+  "test_credentials": "host@bullpup.example.com / bullpup123 works (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created TEST users test_*@example.com plus their demo data; all deleted after testing.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: REACT_APP_BACKEND_URL=<url> pytest /app/backend/tests/test_bullpup_layer1.py. It cleans up its own test_ users via pymongo. Property card testid prefix also matches 'property-card-{id}-name', so use exact ids. Nav links are duplicated (desktop/mobile), so use :visible. Clicking nav immediately after login can race with the login page's router.replace; wait for properties-list first.",
+  "rca of the issue": "Lockout: login_attempts docs showed '10.201.1.194:email' count 3 and '10.201.4.160:email' count 3 after 6 attempts. Requests are spread across ingress pods, so the count never reaches 5. Mitigation: ip = request.headers.get('x-forwarded-for','').split(',')[0].strip() or request.client.host."
+}

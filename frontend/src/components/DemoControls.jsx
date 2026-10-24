@@ -55,7 +55,7 @@ export function DemoControls({ status, onChange }) {
 
   return (
     <div className="flex flex-wrap gap-3" data-testid="demo-controls">
-      <button className="btn btn-primary" onClick={load} disabled={busy} data-testid="demo-load-button">
+      <button className={`btn ${status?.demo_loaded ? "btn-secondary" : "btn-primary"}`} onClick={load} disabled={busy} data-testid="demo-load-button">
         <Database size={18} aria-hidden /> Load demo data
       </button>
       {status?.demo_loaded && (

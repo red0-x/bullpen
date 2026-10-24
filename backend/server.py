@@ -208,7 +208,8 @@ async def register(body: RegisterIn, response: Response):
 @api.post("/auth/login")
 async def login(body: LoginIn, request: Request, response: Response):
     email = body.email.lower()
-    ident = f"{request.client.host if request.client else 'x'}:{email}"
+    fwd = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    ident = f"{fwd or (request.client.host if request.client else 'x')}:{email}"
     att = await db.login_attempts.find_one({"identifier": ident})
     if att and att.get("count", 0) >= 5 and att["last"] > now_utc() - timedelta(minutes=15):
         raise HTTPException(429, "Too many attempts. Try again in 15 minutes.")
@@ -241,7 +242,7 @@ async def refresh(request: Request, response: Response):
         payload = jwt.decode(token or "", JWT_SECRET, algorithms=[JWT_ALG])
     except jwt.InvalidTokenError:
         raise HTTPException(401, "Invalid session")
-    if payload.get("type") != "refresh":
+    if payload.get("type") != "refresh" or not await db.users.find_one({"id": payload["sub"]}):
         raise HTTPException(401, "Invalid session")
     set_auth_cookies(response, payload["sub"])
     return {"ok": True}
@@ -395,6 +396,13 @@ async def startup():
     for coll in DOMAIN:
         await db[coll].create_index([("host_id", 1), ("demo", 1)])
         await db[coll].create_index("id", unique=True)
+    demo_email = os.environ["DEMO_HOST_EMAIL"].lower()
+    demo_pw = os.environ["DEMO_HOST_PASSWORD"]
+    existing = await db.users.find_one({"email": demo_email})
+    if not existing:
+        await db.users.insert_one(Host(name="Demo Host", email=demo_email, password_hash=hash_pw(demo_pw)).model_dump())
+    elif not check_pw(demo_pw, existing["password_hash"]):
+        await db.users.update_one({"email": demo_email}, {"$set": {"password_hash": hash_pw(demo_pw)}})
 
 
 @app.on_event("shutdown")
