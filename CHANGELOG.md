@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-25 — Realistic voice (Deepgram)
+### Added
+- Bullpup's voice agent now speaks with Deepgram's realistic Thalia voice and listens with Deepgram's speech recognition. Tap the mic to start, tap again to stop (it stops on its own after 15 seconds). The key stays on the server. If Deepgram is slow or fails, it falls back to the browser's own voice and speech recognition.
+
 ## 2026-10-25 — Photo-first fixing, SF contractor directory, voice agent
 ### Added
 - "Something broke" is now photo-first. The screen has one big "Take a picture" button that opens the live camera, with "Upload a photo" and "Describe it instead" as backups. After the snap, everything fills itself in: what's wrong, how to fix it, the trade, the property, the amenity and the urgency. If the AI can't tell which property, it uses the one you used last, otherwise your first one. A small "Wrong? Change" link lets you fix it if needed.

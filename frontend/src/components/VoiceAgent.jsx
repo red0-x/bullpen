@@ -7,12 +7,31 @@ import { api } from "@/lib/api";
 
 const ROUTES = { camera: "/something-broke/?camera=1", fixit: "/fix-it/", bench: "/bench/", properties: "/properties/" };
 
-function speak(text) {
+let current = null;
+
+function browserSpeak(text) {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.rate = 1.02;
   window.speechSynthesis.speak(u);
+}
+
+export function stopSpeaking() {
+  current?.pause();
+  window.speechSynthesis?.cancel();
+}
+
+async function speak(text) {
+  stopSpeaking();
+  try {
+    const { data } = await api.post("/voice/speak", { text }, { responseType: "blob", timeout: 20000 });
+    current = new Audio(URL.createObjectURL(data));
+    current.onended = () => URL.revokeObjectURL(current.src);
+    await current.play();
+  } catch {
+    browserSpeak(text);
+  }
 }
 
 export function VoiceAgent() {
@@ -25,7 +44,8 @@ export function VoiceAgent() {
   const [msgs, setMsgs] = useState([{ role: "assistant", text: "Hi! Tell me what broke, or ask what needs you today." }]);
   const rec = useRef(null);
   const end = useRef(null);
-  const supported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const recorder = useRef(null);
+  const supported = typeof window !== "undefined" && (window.MediaRecorder || window.SpeechRecognition || window.webkitSpeechRecognition);
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
@@ -51,9 +71,12 @@ export function VoiceAgent() {
     }
   };
 
-  const listen = () => {
-    if (listening) return rec.current?.stop();
+  const browserListen = () => {
     const R = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!R) {
+      setListening(false);
+      return;
+    }
     const r = new R();
     r.lang = "en-US";
     r.interimResults = true;
@@ -69,6 +92,44 @@ export function VoiceAgent() {
     r.start();
   };
 
+  const listen = async () => {
+    if (listening) {
+      recorder.current?.state === "recording" ? recorder.current.stop() : rec.current?.stop();
+      return;
+    }
+    stopSpeaking();
+    if (!window.MediaRecorder) return browserListen();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "";
+      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      const chunks = [];
+      mr.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setListening(false);
+        const type = mr.mimeType || "audio/webm";
+        const form = new FormData();
+        form.append("file", new Blob(chunks, { type }), type.includes("mp4") ? "voice.mp4" : "voice.webm");
+        setText("Transcribing…");
+        try {
+          const { data } = await api.post("/voice/transcribe", form, { timeout: 25000 });
+          setText("");
+          if (data.text.trim()) ask(data.text);
+        } catch {
+          setText("");
+          browserListen();
+        }
+      };
+      recorder.current = mr;
+      mr.start();
+      setListening(true);
+      setTimeout(() => mr.state === "recording" && mr.stop(), 15000);
+    } catch {
+      browserListen();
+    }
+  };
+
   return (
     <>
       {open && (
@@ -76,7 +137,7 @@ export function VoiceAgent() {
           <div className="flex items-center gap-2 p-3 border-b-[1.5px] border-line">
             <img src="/mascot/pup-head.webp" alt="" className="h-9 w-9 rounded-lg border-[1.5px] border-line" />
             <p className="font-head text-lg flex-1">Talk to Bullpup</p>
-            <button className="btn btn-secondary px-2 !min-h-[40px]" onClick={() => { setOpen(false); window.speechSynthesis?.cancel(); }} aria-label="Close" data-testid="voice-close-button"><X size={16} /></button>
+            <button className="btn btn-secondary px-2 !min-h-[40px]" onClick={() => { setOpen(false); stopSpeaking(); }} aria-label="Close" data-testid="voice-close-button"><X size={16} /></button>
           </div>
           <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2" data-testid="voice-messages">
             {msgs.map((m, i) => (

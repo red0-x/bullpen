@@ -1,10 +1,14 @@
 """Sample San Francisco contractor directory (made-up businesses) and the voice assistant endpoint."""
 import json
+import logging
 import math
+import os
 import random
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+import httpx
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ai import AIError, _json, _run
@@ -94,6 +98,57 @@ async def directory(trade: str, lat: Optional[float] = None, lng: Optional[float
     origin = (lat, lng) if lat is not None and lng is not None and miles(SF, (lat, lng)) < 60 else SF
     used = trade if trade in TRADES else "Plumbing"
     return {"sample_data": True, "area": "San Francisco", "trade": used, "results": rank_directory(used, origin)}
+
+
+DG_URL = "https://api.deepgram.com/v1"
+DG_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=10.0, pool=5.0)
+DG_VOICE = "aura-2-thalia-en"
+log = logging.getLogger("bullpup.voice")
+
+
+class SpeakIn(BaseModel):
+    text: str = Field(min_length=1, max_length=1500)
+
+
+def dg_headers() -> dict:
+    key = os.environ.get("DEEPGRAM_API_KEY")
+    if not key:
+        raise HTTPException(503, "Realistic voice isn't set up yet.")
+    return {"Authorization": f"Token {key}"}
+
+
+@router.post("/voice/speak")
+async def voice_speak(body: SpeakIn, host: dict = Depends(current_host)):
+    headers = dg_headers()
+    try:
+        async with httpx.AsyncClient(timeout=DG_TIMEOUT) as client:
+            r = await client.post(f"{DG_URL}/speak", params={"model": DG_VOICE, "encoding": "mp3"},
+                                  json={"text": body.text}, headers={**headers, "Content-Type": "application/json"})
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        log.warning("Deepgram speak failed: %s", type(e).__name__)
+        raise HTTPException(502, "Voice service unavailable")
+    return Response(content=r.content, media_type="audio/mpeg")
+
+
+@router.post("/voice/transcribe")
+async def voice_transcribe(file: UploadFile = File(...), host: dict = Depends(current_host)):
+    if not (file.content_type or "").startswith("audio/"):
+        raise HTTPException(415, "Send an audio file")
+    audio = await file.read()
+    if not audio or len(audio) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Recording is empty or too long")
+    headers = dg_headers()
+    try:
+        async with httpx.AsyncClient(timeout=DG_TIMEOUT) as client:
+            r = await client.post(f"{DG_URL}/listen", params={"model": "nova-3", "smart_format": "true"},
+                                  content=audio, headers={**headers, "Content-Type": file.content_type.split(";")[0]})
+        r.raise_for_status()
+        text = r.json()["results"]["channels"][0]["alternatives"][0].get("transcript", "")
+    except (httpx.HTTPError, KeyError, IndexError, ValueError) as e:
+        log.warning("Deepgram listen failed: %s", type(e).__name__)
+        raise HTTPException(502, "Transcription unavailable")
+    return {"text": text}
 
 
 class VoiceIn(BaseModel):
