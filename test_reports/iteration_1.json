@@ -1,0 +1,44 @@
+{
+  "summary": "Backend: 16/16 pytest passed (auth with Bearer tokens/refresh/register, demo, properties, bench, fixit, watch, directory, AI diagnose (gpt-5.4 ok:true), the whole issue flow request->booked->outcome->undo, contractors CRUD, AI extract + import + undo). Frontend at 390x844: landing, login, Fix-it list, Find help -> issue screen, AI drafted request sheet, Copy text + Undo toast, Booked sheet with day/time chips -> Scheduled, How did it go -> Resolved, Rentals tiles + Reset demo confirm, Bench chips/pin+undo/status sheet/+Add contractor, gap 'Add contractor' prefill, Snap Describe-it -> AI diagnosis + directory Save to bench + Track -> issue, register, wrong-password error and session kept after reload all WORK. CRITICAL: Logout is broken. The app goes blank with 'Maximum update depth exceeded' (infinite redirect). Fixed a 'Unexpected text node' console error in Sheet/ConfirmSheet/EmptyState/ScreenHeader. No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/issues/{id}/outcome", "issue": "'changes' comes back as [] when the booked contractor's rank and score don't change (for example Mike's Plumbing at 98, 4 stars). The UI then shows no 'Bench updated' card. This is how the original site works, but users get no ranking feedback."},
+      {"endpoint": "GET /api/directory", "issue": "Always sample San Francisco listings, even for a Tahoe Cabin or Oakland issue (header says 'near San Francisco'). This is sample data by design."},
+      {"endpoint": "POST /api/demo/reset", "issue": "Contractors saved from the directory (for example Fog City Plumbing) are not demo-flagged, so they survive a demo reset."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Logout (ScreenHeader)", "issue": "Tapping logout shows a blank screen with 'Maximum update depth exceeded' (seen in the web console and expo.out.log). RCA: app/index.tsx (landing) and app/(tabs)/index.tsx both resolve to '/'. app/(tabs)/_layout.tsx:19 does `<Redirect href=\"/\" />` when user===false, which resolves back into the (tabs) group. That redirects again and loops forever. Fix: point the redirect at an unambiguous route (move the landing page to its own route such as /welcome, or rename the tabs index route) and/or call router.replace to the landing inside logout().", "testID": "header-logout-button", "priority": "CRITICAL"},
+      {"component": "Toast", "issue": "The toast sits on top of the header (y 8-72) for up to 10s and fully covers the back button and the logout button. The toast's Undo button lands where logout is, so a user who taps logout right after an action triggers Undo instead (reproduced: a newly added contractor got removed). Move the toast to the bottom above the tab bar, or offset it below the header.", "testID": "toast", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Rentals", "issues": ["The 'Load demo data' button label is cut off to 'Load demo d...' at 390px when shown next to 'Reset demo'. Use a shorter label or let the buttons wrap/stack."]},
+      {"screen": "Bench", "issues": ["Many header-logout-button elements are mounted at once (one per tab), so there are duplicate testIDs."]}
+    ],
+    "react_native_issues": [
+      {"component": "Conditional string rendering", "issue": "`{sub && <T/>}` with sub=\"\" put an empty text node inside a View, which caused the 'Unexpected text node' console error when RequestSheet closed. FIXED by switching to !! in src/ui.tsx:136,192,212,230 and src/components/ScreenHeader.tsx:25,27"}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_bullpup_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "CRITICAL: Fix the logout infinite redirect. The landing route (app/index.tsx) and the tabs index route (app/(tabs)/index.tsx) both map to '/'; make the redirect in app/(tabs)/_layout.tsx:19 point at an unambiguous landing route.",
+    "HIGH: Move the toast so it doesn't cover the header back/logout buttons (bottom placement or top offset below the header).",
+    "Shorten or wrap the 'Load demo data' button label on Rentals.",
+    "Optional: show a 'Bench updated: no rank change' note when outcome changes are empty."
+  ],
+  "critical_code_review_comments": [
+    "backend/server.py is 747 lines (>700); consider splitting the auth and issues routes into modules.",
+    "app/_layout.tsx calls LogBox.ignoreAllLogs(true), which hides real errors during development.",
+    "DirectoryCard save(): service_area is hard-coded to 'San Francisco' plus the host's cities."
+  ],
+  "updated_files": ["/app/frontend/src/ui.tsx", "/app/frontend/src/components/ScreenHeader.tsx", "/app/backend/tests/test_bullpup_api.py"],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "~90% (all requested flows pass except logout)"},
+  "seed_data_creation": "Registered test_*@example.com users (TEST_ prefix). Demo data for host@bullpup.example.com was reset after testing; the directory-saved 'Fog City Plumbing' contractor may still be there.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run backend tests with: export $(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env) && pytest /app/backend/tests -v (pytest.ini forces -n 2; use -n 0 for serial). Tab testIDs: tab-index/tab-snap/tab-bench/tab-properties. Use '[data-testid=\"header-logout-button\"]:visible' (duplicates exist). Fix-it action testIDs are fixit-action-{issue|outcome|gap|stale|watch}-{id}. Directory save button: [data-testid^=dir-][data-testid$=-save]; the rank-1 card is expanded by default, so tapping its toggle collapses it. Booking sheet confirm: booking-sheet-confirm-button. Outcome form: outcome-form-showed-yes / -ontime-yes / -star-N / -submit.",
+  "rca_of_issue": "Logout: ScreenHeader.logout() -> setUser(false) -> TabsLayout renders <Redirect href='/'> -> '/' resolves to (tabs)/index inside the same group -> TabsLayout renders Redirect again -> 'Maximum update depth exceeded' and a blank screen. Reproduce: log in, tap the logout icon on the Fix-it tab."
+}

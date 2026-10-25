@@ -1,0 +1,113 @@
+import { useCallback, useState } from "react";
+import { RefreshControl, ScrollView, View } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { api, errorText } from "@/src/api";
+import { URGENCY, fmtWhen } from "@/src/format";
+import { useContractorActions, Actions } from "@/src/contractorActions";
+import { usesNativeTabs } from "@/src/navigation";
+import { toast } from "@/src/toast";
+import { makeStyles } from "@/src/theme";
+import { ScreenHeader } from "@/src/components/ScreenHeader";
+import { Badge, Btn, Card, EmptyState, Notice, Skeleton, T } from "@/src/ui";
+
+const KIND: Record<string, ["warn" | "neutral", string]> = {
+  issue: ["warn", "Waiting on a contractor"],
+  outcome: ["neutral", "Outcome not logged"],
+  gap: ["warn", "Coverage gap"],
+  stale: ["neutral", "Stale contact"],
+  watch: ["warn", "Bench watch"],
+};
+
+function ItemAction({ item, actions, reload }: { item: any; actions: Actions; reload: () => void }) {
+  const router = useRouter();
+  const tid = `fixit-action-${item.id}`;
+  const c = { id: item.contractor_id, business_name: item.title.split(":")[0] };
+  if (item.kind === "issue" || item.kind === "outcome") {
+    return <Btn label={item.action} onPress={() => router.push(`/issue/${item.issue_id}`)} testID={tid} />;
+  }
+  if (item.kind === "gap") {
+    return <Btn label={item.action} onPress={() => router.push({ pathname: "/(tabs)/bench", params: { add: "1", trade: item.trade, city: item.city } })} testID={tid} />;
+  }
+  if (item.kind === "watch") {
+    const ack = async (value: boolean) => {
+      await api(`/watch/alerts/${item.signal_id}/ack`, { method: "POST", params: { acknowledged: value } });
+      reload();
+    };
+    return (
+      <Btn label={item.action} variant="secondary" testID={tid} onPress={async () => {
+        try {
+          await ack(true);
+          toast("Alert cleared.", { action: { label: "Undo", onPress: () => ack(false) } });
+        } catch (e) {
+          toast.error(errorText(e));
+        }
+      }} />
+    );
+  }
+  return (
+    <View style={{ gap: 8 }}>
+      <Btn label="Still active" onPress={() => actions.stillActive(c)} testID={tid} />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Btn label="Out of business" variant="secondary" small style={{ flex: 1 }} onPress={() => actions.setStatus(c, "out_of_business")} testID={`${tid}-out`} />
+        <Btn label="Snooze 30 days" variant="secondary" small style={{ flex: 1 }} onPress={() => actions.snooze(c)} testID={`${tid}-snooze`} />
+      </View>
+    </View>
+  );
+}
+
+export default function FixIt() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const s = useStyles();
+  const [data, setData] = useState<any>(null);
+  const [err, setErr] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(() => api("/fixit").then((d) => { setData(d); setErr(""); }).catch((e) => setErr(errorText(e))), []);
+  const actions = useContractorActions(load);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const bottom = (usesNativeTabs ? insets.bottom : 0) + 24;
+  return (
+    <View style={s.root}>
+      <ScreenHeader eyebrow="Home" title="Fix-it list" sub="What needs you today, in order." />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottom, gap: 12 }} testID="fixit-list"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}>
+        <Btn label="Something broke" icon="siren" onPress={() => router.push("/(tabs)/snap")} testID="fixit-something-broke-button" />
+        {!!err && <Notice testID="fixit-error">{err}</Notice>}
+        {!data && !err && <Skeleton height={140} testID="fixit-loading" />}
+        {data?.items.length === 0 && (data.setup.properties === 0 || data.setup.contractors === 0) && (
+          <EmptyState pose="glove" testID="fixit-setup-state" title="Let's build your bench" body="Add your rentals and the contractors you use. Bullpup will flag gaps and stale contacts here.">
+            <Btn label="Load demo or add properties" onPress={() => router.push("/(tabs)/properties")} testID="fixit-setup-properties-button" />
+            <Btn label="Import contacts" variant="secondary" onPress={() => router.push({ pathname: "/(tabs)/bench", params: { tab: "import" } })} testID="fixit-setup-import-button" />
+          </EmptyState>
+        )}
+        {data?.items.length === 0 && data.setup.properties > 0 && data.setup.contractors > 0 && (
+          <EmptyState pose="sleep" motion="breathe" testID="fixit-empty-state" title="Your bench is ready. Nothing needs you today." />
+        )}
+        {data?.items.map((i: any, idx: number) => (
+          <Card key={i.id} delay={Math.min(idx, 8) * 50} style={{ gap: 12 }} testID={`fixit-item-${i.id}`}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              <Badge kind={KIND[i.kind][0]} label={i.kind === "issue" && i.status === "open" ? "Needs a contractor" : KIND[i.kind][1]} />
+              {i.urgency && <Badge label={URGENCY[i.urgency]} />}
+            </View>
+            <View style={{ gap: 2 }}>
+              <T weight="semi" size={16}>{i.title}</T>
+              {(i.subtitle || i.guest_arrival || i.scheduled_for) && (
+                <T size={14} muted>
+                  {i.subtitle}
+                  {i.guest_arrival ? ` · Guests ${fmtWhen(i.guest_arrival)}` : ""}
+                  {i.scheduled_for ? ` · Booked for ${fmtWhen(i.scheduled_for)}` : ""}
+                </T>
+              )}
+            </View>
+            <ItemAction item={i} actions={actions} reload={load} />
+          </Card>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
