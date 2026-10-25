@@ -4,12 +4,16 @@ import { useRef, useState } from "react";
 import { Camera, ImageUp, PenLine, X } from "lucide-react";
 import { fileToJpeg } from "@/lib/image";
 import { Mascot } from "@/components/Mascot";
+import { LiveCamera } from "./LiveCamera";
 
 export function CaptureStep({ value, onChange, onSubmit, busy }) {
   const camRef = useRef(null);
   const upRef = useRef(null);
   const [photoErr, setPhotoErr] = useState("");
+  const [live, setLive] = useState(false);
   const set = (patch) => onChange({ ...value, ...patch });
+  const openCamera = () => setLive(true);
+  const nativeCamera = () => camRef.current?.click();
 
   const pick = async (e) => {
     const file = e.target.files?.[0];
@@ -36,20 +40,21 @@ export function CaptureStep({ value, onChange, onSubmit, busy }) {
           </div>
         ) : (
           <button
-            onClick={() => camRef.current?.click()}
+            onClick={openCamera}
             className="w-full rounded-[16px] border-[2px] border-dashed border-line bg-cream/70 hover:bg-cream transition-colors duration-150 flex flex-col items-center justify-center gap-3 py-10 px-4"
             data-testid="capture-camera-dropzone"
           >
             <Mascot pose="camera" className="w-32 h-32 sm:w-40 sm:h-40" />
             <span className="font-head text-2xl text-espresso">Snap a photo</span>
-            <span className="text-sm text-cocoa">Your phone camera opens. On a computer, pick a file.</span>
+            <span className="text-sm text-cocoa">Opens your camera on a phone or computer. Get the damage in frame.</span>
           </button>
         )}
+        <LiveCamera open={live} onClose={() => setLive(false)} onCapture={(photo) => set({ photo })} onUnavailable={() => { setLive(false); nativeCamera(); }} />
         <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={pick} data-testid="capture-camera-input" />
         <input ref={upRef} type="file" accept="image/*" className="hidden" onChange={pick} data-testid="capture-upload-input" />
         <div className="mt-4 flex flex-wrap gap-3">
-          <button className="btn btn-secondary" onClick={() => camRef.current?.click()} data-testid="capture-take-photo-button">
-            <Camera size={18} /> Take photo
+          <button className="btn btn-secondary" onClick={openCamera} data-testid="capture-take-photo-button">
+            <Camera size={18} /> {value.photo ? "Retake" : "Take photo"}
           </button>
           <button className="btn btn-secondary" onClick={() => upRef.current?.click()} data-testid="capture-upload-button">
             <ImageUp size={18} /> Upload

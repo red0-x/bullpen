@@ -12,6 +12,8 @@ import { Mascot } from "@/components/Mascot";
 import { CandidateCard } from "@/components/issue/CandidateCard";
 import { RequestDialog } from "@/components/issue/RequestDialog";
 import { WaitingPanel } from "@/components/issue/WaitingPanel";
+import { FixGuide } from "@/components/broke/FixGuide";
+import { HowDidItGo, OutcomeList, RankChanges } from "@/components/issue/Outcomes";
 
 const STATUS = { open: "badge-warn", waiting: "badge-warn", scheduled: "badge-ready", resolved: "badge-ready" };
 
@@ -40,6 +42,7 @@ function IssueHeader({ data }) {
         {issue.updates?.length > 0 && (
           <ul className="mt-3 text-sm text-cocoa list-disc pl-5">{issue.updates.map((u, i) => <li key={i}>{u.note || "Added a photo"}</li>)}</ul>
         )}
+        <div className="mt-4"><FixGuide steps={issue.fix_steps || []} safety={issue.safety_note} diy={issue.diy} testId="issue-fix-guide" /></div>
       </div>
     </section>
   );
@@ -87,6 +90,13 @@ function IssueView() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   const [asking, setAsking] = useState(null);
+  const [changes, setChanges] = useState([]);
+
+  const outcomeDone = async (res) => {
+    setChanges(res?.changes || []);
+    const fresh = await load();
+    if (res && !res.outcome.showed_up && fresh?.candidates?.[0]) setAsking(fresh.candidates[0]);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -132,11 +142,15 @@ function IssueView() {
   if (err) return <EmptyState pose="sniff" motion="sniff" title="We couldn't find that issue" body={err} testId="issue-error"><Link href="/fix-it/" className="btn btn-primary">Back to Fix-it list</Link></EmptyState>;
   if (!data) return <div className="card h-64 animate-pulse" data-testid="issue-loading" />;
   const showCandidates = data.issue.status !== "scheduled" && data.issue.status !== "resolved";
+  const booked = [...data.requests].reverse().find((r) => r.response === "booked");
   return (
     <div className="flex flex-col gap-6">
       <IssueHeader data={data} />
+      <RankChanges changes={changes} />
+      {data.issue.status === "scheduled" && <HowDidItGo issue={data.issue} booked={booked} onDone={outcomeDone} />}
       <WaitingPanel requests={data.requests} onRespond={respond} />
       {showCandidates && <Candidates data={data} onRequest={setAsking} />}
+      <OutcomeList outcomes={data.outcomes || []} onEdited={outcomeDone} />
       <RequestDialog issue={data.issue} contractor={asking} onClose={() => setAsking(null)} onLogged={logged} />
     </div>
   );

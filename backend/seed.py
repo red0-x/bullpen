@@ -143,5 +143,19 @@ def build_demo(host_id: str, host_name: str, now: datetime) -> dict:
     for iss in issues:
         if iss["id"] in open_ids[:-1]:
             iss["status"] = "resolved"
+    signals = []
+    for i, c in enumerate(contractors):
+        reading = {"response_time": str(20 + (i * 37) % 160), "public_rating": f"{4.3 + (i % 6) / 10:.1f}",
+                   "business_open": "yes", "phone_working": "yes" if c["status"] == "active" else "no",
+                   "license_status": "active"}
+        for t, v in reading.items():
+            signals.append({**base, "id": _id(), "contractor_id": c["id"], "signal_type": t, "value": v,
+                            "date": now - timedelta(days=28), "alert": None, "created_at": now})
+        if c["business_name"] == "High Desert Hot Tubs":
+            signals.append({**base, "id": _id(), "contractor_id": c["id"], "signal_type": "public_rating",
+                            "value": "4.7", "date": now - timedelta(days=24), "alert": None, "created_at": now})
+            signals.append({**base, "id": _id(), "contractor_id": c["id"], "signal_type": "public_rating",
+                            "value": "3.9", "date": now - timedelta(days=2),
+                            "alert": "Rating dropped from 4.7 to 3.9 this month", "created_at": now})
     return {"properties": props, "amenities": amenities, "contractors": contractors, "issues": issues,
-            "requests": requests, "job_outcomes": outcomes, "watch_signals": []}
+            "requests": requests, "job_outcomes": outcomes, "watch_signals": signals}

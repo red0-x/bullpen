@@ -2,6 +2,7 @@
 
 import { Sparkles, TriangleAlert } from "lucide-react";
 import { AmenityPicker } from "./AmenityPicker";
+import { FixGuide } from "./FixGuide";
 import { URGENCY } from "@/lib/image";
 
 function Select({ label, value, onChange, options, testId, placeholder }) {
@@ -42,6 +43,7 @@ export function ReviewStep({ draft, setDraft, notice, properties, trades, photo,
             <p className="font-semibold">Bullpup&apos;s best guess. Check it, change anything, then confirm.</p>
           </div>
         )}
+        <FixGuide steps={draft.fix_steps || []} safety={draft.safety_note} diy={draft.diy} testId="review-fix-guide" />
       </div>
 
       <div className="card p-5 sm:p-6 flex flex-col gap-4">

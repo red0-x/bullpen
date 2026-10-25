@@ -15,6 +15,7 @@ import { ReviewStep } from "@/components/broke/ReviewStep";
 const EMPTY = { photo: null, note: "", arrival: "" };
 const CANT_TELL = "We couldn't tell from the photo. What needs fixing?";
 const CANT_TELL_NOTE = "We couldn't tell from your note. What needs fixing?";
+const NOT_RENTAL = "This doesn't look like part of your rental, so there's no contractor to call. Here's how to deal with it anyway. If it is part of a property, pick the amenity below.";
 
 export default function SomethingBrokePage() {
   const router = useRouter();
@@ -44,6 +45,7 @@ export default function SomethingBrokePage() {
         const g = data.draft;
         d = { ...d, ...Object.fromEntries(Object.entries(g).filter(([, v]) => v !== null && v !== undefined)), property_id: g.property_id || d.property_id };
         if (!g.can_tell || !g.trade) msg = input.photo ? CANT_TELL : CANT_TELL_NOTE;
+        if (g.can_tell && g.is_rental_issue === false) msg = NOT_RENTAL;
         if (!g.diagnosis) d.diagnosis = input.note;
         if (g.guest_arrival && !input.arrival) setInput((i) => ({ ...i, arrival: g.guest_arrival.slice(0, 16) }));
       }
@@ -58,6 +60,7 @@ export default function SomethingBrokePage() {
   const payload = () => ({
     property_id: draft.property_id, amenity_id: draft.amenity_id || null, trade_needed: draft.trade,
     urgency: draft.urgency, host_note: input.note, ai_diagnosis: draft.diagnosis || null,
+    fix_steps: draft.fix_steps || [], safety_note: draft.safety_note || null, diy: draft.diy || null,
     guest_arrival: input.arrival ? new Date(input.arrival).toISOString() : null, photo_base64: input.photo?.base64 || null,
   });
 

@@ -16,7 +16,50 @@ def _fmt_day(d: datetime) -> str:
     return d.strftime("%b %-d")
 
 
-def score_contractor(c: dict, outcomes: list, requests: list, now: datetime) -> dict:
+def latest_revisions(outcomes: list) -> list:
+    """Edited outcomes are new records with revision_of; only the newest per original counts."""
+    latest = {}
+    for o in outcomes:
+        key = o.get("revision_of") or o["id"]
+        if key not in latest or o["created_at"] > latest[key]["created_at"]:
+            latest[key] = o
+    return list(latest.values())
+
+
+def watch_adjustments(signals: list, now: datetime) -> list:
+    """signals: watch_signals for one contractor. Returns [(delta, reason)]."""
+    by_type = {}
+    for s in sorted(signals, key=lambda s: s["date"]):
+        by_type.setdefault(s["signal_type"], []).append(s)
+    out = []
+    ratings = by_type.get("public_rating", [])
+    if len(ratings) >= 2:
+        new, month_ago = float(ratings[-1]["value"]), None
+        for s in ratings[:-1]:
+            if s["date"] >= now - timedelta(days=31):
+                month_ago = float(s["value"])
+                break
+        if month_ago is not None and month_ago - new >= 0.3:
+            out.append((-min(15, round((month_ago - new) * 12)), f"Rating dropped from {month_ago:.1f} to {new:.1f} this month"))
+    resp = by_type.get("response_time", [])
+    if resp and float(resp[-1]["value"]) >= 240:
+        out.append((-4, f"Slow to reply lately (about {round(float(resp[-1]['value']) / 60)} h)"))
+    lic = by_type.get("license_status", [])
+    if lic and lic[-1]["value"] != "active":
+        out.append((-10, f"License {lic[-1]['value']}"))
+    return out
+
+
+def score_contractor(c: dict, outcomes: list, requests: list, now: datetime, adjust: list | None = None) -> dict:
+    base = _score_base(c, latest_revisions(outcomes), requests, now)
+    if base["ranked"] and adjust:
+        base["score"] = max(0, min(100, base["score"] + sum(d for d, _ in adjust)))
+        base["reason"] = f"{base['reason']} · {adjust[0][1]}"
+        base["watch"] = [r for _, r in adjust]
+    return base
+
+
+def _score_base(c: dict, outcomes: list, requests: list, now: datetime) -> dict:
     status = c.get("status", "active")
     if status != "active":
         label = "Unreachable" if status == "unreachable" else "Out of business"
@@ -82,7 +125,11 @@ def rank(scored: list) -> list:
     return active + sorted(inactive, key=lambda c: c["name"].lower())
 
 
+def area_matches(areas, city: str) -> bool:
+    city = city.lower().strip()
+    return any(a and (a in city or city in a) for a in (x.lower().strip() for x in areas))
+
+
 def covers(contractor: dict, amenity: dict, prop: dict) -> bool:
     trades = {t.lower() for t in contractor.get("trades", [])}
-    areas = {a.lower() for a in contractor.get("service_area", [])}
-    return amenity["trade"].lower() in trades and prop["city"].lower() in areas
+    return amenity["trade"].lower() in trades and area_matches(contractor.get("service_area", []), prop["city"])

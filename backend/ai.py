@@ -63,8 +63,15 @@ async def diagnose(note: str, image_b64: str | None, properties: list, trades: l
         f"Today is {today}. Host note: {note or '(none)'}\n"
         f"Host's properties and amenities: {json.dumps(catalog)}\n"
         f"Allowed trades: {json.dumps(trades)}\n"
+        "Look closely at the photo for visible damage: cracks, leaks, water stains, rust, mold, broken parts, "
+        "scorch marks, error lights, clogs, cloudy or green water, frayed wires.\n"
         "Return JSON with keys: can_tell (bool, false if the photo/note doesn't show a fixable problem), "
-        "diagnosis (one or two plain sentences on what's likely wrong), trade (one of the allowed trades or null), "
+        "is_rental_issue (bool, false if it's a personal item like earbuds or a phone rather than part of a rental home), "
+        "diagnosis (one or two plain sentences on what's wrong and the likely cause), "
+        "fix_steps (array of 2-5 short plain steps: what the host can safely do right now, then how a pro fixes it), "
+        "safety_note (one sentence if there is any risk like water damage, electrical, gas, injury; else null), "
+        "diy ('yes' if a host can fix it alone safely, 'maybe', or 'no' if it needs a pro), "
+        "trade (one of the allowed trades or null), "
         "urgency ('today' | 'this_week' | 'can_wait'; today if guests arrive within ~48h or it's unsafe), "
         "property_id (best guess from the list or null), amenity_id (best guess or null), "
         "guest_arrival (ISO 8601 local datetime like 2026-10-30T16:00 if the note mentions arrival, else null)."
@@ -90,6 +97,31 @@ async def draft_message(ctx: dict) -> str:
     if not text:
         raise AIError("empty")
     return text[:800]
+
+
+EXTRACT_SYSTEM = (
+    "You pull contractor contact details out of messy pasted text (notes, texts, spreadsheets, emails). "
+    "Reply with ONLY a JSON object. Never invent details that are not in the text."
+)
+
+
+async def extract_contractors(text: str, trades: list, cities: list) -> list:
+    prompt = (
+        f"Allowed trades: {json.dumps(trades)}\nHost's cities: {json.dumps(cities)}\n"
+        f"Text:\n<<<\n{text}\n>>>\n"
+        'Return {"contractors": [{"name": str, "business_name": str, "phone": str, "email": str, '
+        '"trades": [allowed trades], "service_area": [city names], "notes": str, '
+        '"unsure": [field names you guessed or could not find confidently, e.g. "trade", "service_area"]}]}. '
+        "Map words like plumber->Plumbing, pool guy->Pool service, spa->Hot tub & spa, AC/furnace->HVAC, "
+        "maid/turnover->Cleaning, fridge/dishwasher->Appliance repair, electrician->Electrical. "
+        'If the trade is unclear leave trades empty and add "trade" to unsure. '
+        "Use empty strings for missing fields. Return an empty list if there are no contractors."
+    )
+    data = _json(await _run(EXTRACT_SYSTEM, prompt))
+    rows = data.get("contractors")
+    if not isinstance(rows, list):
+        raise AIError("bad shape")
+    return rows
 
 
 def template_message(ctx: dict) -> str:

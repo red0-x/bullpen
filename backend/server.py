@@ -16,7 +16,7 @@ from pydantic import BaseModel, EmailStr, Field
 from starlette.middleware.cors import CORSMiddleware
 
 import base64
-from scoring import score_contractor, rank, covers
+from scoring import score_contractor, rank, covers, watch_adjustments, latest_revisions
 from seed import build_demo, AMENITY_TRADES
 from ai import diagnose, draft_message, template_message, AIError
 
@@ -80,6 +80,8 @@ class Contractor(DocBase):
     status: Literal["active", "unreachable", "out_of_business"] = "active"
     last_contacted: Optional[datetime] = None
     pinned: bool = False
+    snooze_until: Optional[datetime] = None
+    verified_at: Optional[datetime] = None
 
 
 class Issue(DocBase):
@@ -88,6 +90,9 @@ class Issue(DocBase):
     photo_url: Optional[str] = None
     host_note: str = ""
     ai_diagnosis: Optional[str] = None
+    fix_steps: List[str] = []
+    safety_note: Optional[str] = None
+    diy: Optional[Literal["yes", "maybe", "no"]] = None
     trade_needed: Optional[str] = None
     urgency: Optional[Literal["today", "this_week", "can_wait"]] = None
     guest_arrival: Optional[datetime] = None
@@ -117,6 +122,7 @@ class JobOutcome(DocBase):
     rating: int = Field(ge=1, le=5)
     note: str = ""
     date: datetime
+    revision_of: Optional[str] = None
 
 
 class WatchSignal(DocBase):
@@ -125,6 +131,7 @@ class WatchSignal(DocBase):
     value: str
     date: datetime
     alert: Optional[str] = None
+    acknowledged: bool = False
 
 
 DEMO_MODELS = {"properties": Property, "amenities": Amenity, "contractors": Contractor, "issues": Issue,
@@ -282,12 +289,16 @@ async def scored_contractors(host_id: str) -> list:
     contractors = await db.contractors.find({"host_id": host_id}, {"_id": 0}).to_list(2000)
     outcomes = await db.job_outcomes.find({"host_id": host_id}, {"_id": 0}).to_list(20000)
     reqs = await db.requests.find({"host_id": host_id}, {"_id": 0}).to_list(20000)
-    by_c_out, by_c_req = {}, {}
+    signals = await db.watch_signals.find({"host_id": host_id}, {"_id": 0}).to_list(50000)
+    by_c_out, by_c_req, by_c_sig = {}, {}, {}
     for o in outcomes:
         by_c_out.setdefault(o["contractor_id"], []).append(o)
     for r in reqs:
         by_c_req.setdefault(r["contractor_id"], []).append(r)
-    return [{**c, **score_contractor(c, by_c_out.get(c["id"], []), by_c_req.get(c["id"], []), now)}
+    for s in signals:
+        by_c_sig.setdefault(s["contractor_id"], []).append(s)
+    return [{**c, **score_contractor(c, by_c_out.get(c["id"], []), by_c_req.get(c["id"], []), now,
+                                     watch_adjustments(by_c_sig.get(c["id"], []), now))}
             for c in contractors]
 
 
@@ -346,6 +357,7 @@ async def clear_demo(host_id: str):
     await db.issues.delete_many({"host_id": host_id, "id": {"$in": linked}})
     await db.requests.delete_many({"host_id": host_id, "issue_id": {"$in": linked}})
     await db.issue_photos.delete_many({"host_id": host_id, "issue_id": {"$in": linked}})
+    await db.watch_runs.delete_many({"host_id": host_id})
     for coll in DOMAIN:
         await db[coll].delete_many({"host_id": host_id, "demo": True})
 
@@ -402,6 +414,9 @@ class IssueIn(BaseModel):
     urgency: Literal["today", "this_week", "can_wait"]
     host_note: str = Field("", max_length=1000)
     ai_diagnosis: Optional[str] = Field(None, max_length=1500)
+    fix_steps: List[str] = Field(default_factory=list, max_length=8)
+    safety_note: Optional[str] = Field(None, max_length=500)
+    diy: Optional[Literal["yes", "maybe", "no"]] = None
     guest_arrival: Optional[datetime] = None
     photo_base64: Optional[str] = Field(None, max_length=MAX_PHOTO_B64)
 
@@ -475,6 +490,10 @@ async def diagnose_issue(body: DiagnoseIn, host: dict = Depends(current_host)):
         return {"ok": False, "message": "Couldn't read that right now. Tell us what broke below."}
     if not draft.get("can_tell"):
         draft["diagnosis"] = None
+        draft["fix_steps"] = []
+    draft["fix_steps"] = [str(s)[:240] for s in (draft.get("fix_steps") or [])][:6]
+    if draft.get("diy") not in ("yes", "maybe", "no"):
+        draft["diy"] = None
     prop_ids = {p["id"] for p in catalog}
     am = {a["id"]: a for p in catalog for a in p["amenities"]}
     if draft.get("property_id") not in prop_ids:
@@ -488,8 +507,7 @@ async def diagnose_issue(body: DiagnoseIn, host: dict = Depends(current_host)):
 
 @api.get("/issues/open-for")
 async def open_issue_for(amenity_id: str, host: dict = Depends(current_host)):
-    doc = await db.issues.find_one({"host_id": host["id"], "amenity_id": amenity_id, "status": {"$in": OPEN_STATES},
-                                    "demo": {"$ne": True}},
+    doc = await db.issues.find_one({"host_id": host["id"], "amenity_id": amenity_id, "status": {"$in": OPEN_STATES}},
                                    {"_id": 0}, sort=[("created_at", -1)])
     return {"issue": ser(doc) if doc else None}
 
@@ -542,7 +560,7 @@ async def issue_photo(issue_id: str, photo_id: str, host: dict = Depends(current
 
 @api.get("/issues")
 async def list_issues(host: dict = Depends(current_host)):
-    docs = await db.issues.find({"host_id": host["id"], "status": {"$in": OPEN_STATES}, "demo": {"$ne": True}},
+    docs = await db.issues.find({"host_id": host["id"], "status": {"$in": OPEN_STATES}},
                                 {"_id": 0}).sort("created_at", -1).to_list(200)
     props = {p["id"]: p for p in await host_catalog(host["id"])}
     out = []
@@ -569,7 +587,10 @@ async def get_issue(issue_id: str, host: dict = Depends(current_host)):
     bench = await issue_bench(host["id"], issue, prop, {r["contractor_id"] for r in reqs})
     names = {c["id"]: c for c in bench}
     candidates = [c for c in bench if c["rank"] and not c["contacted"]][:3]
+    outcomes = await db.job_outcomes.find({"issue_id": issue_id, "host_id": host["id"]}, {"_id": 0, "undo": 0}).to_list(200)
+    outs = sorted(latest_revisions(outcomes), key=lambda o: o["created_at"])
     return {
+        "outcomes": [ser({**o, "business_name": names.get(o["contractor_id"], {}).get("business_name")}) for o in outs],
         "issue": ser(issue), "property": ser(prop), "amenity": ser(amenity) if amenity else None,
         "requests": [ser({**r, "contractor": {k: names.get(r["contractor_id"], {}).get(k) for k in
                                                ("name", "business_name", "phone")}}) for r in reqs],
@@ -595,7 +616,13 @@ async def draft_request(issue_id: str, body: DraftIn, host: dict = Depends(curre
 
 async def sync_issue_status(issue_id: str):
     reqs = await db.requests.find({"issue_id": issue_id}, {"_id": 0}).to_list(200)
-    booked = [r for r in reqs if r.get("response") == "booked"]
+    outs = latest_revisions(await db.job_outcomes.find({"issue_id": issue_id}, {"_id": 0}).to_list(200))
+    if any(o["showed_up"] for o in outs):
+        st = {"status": "resolved"}
+        await db.issues.update_one({"id": issue_id}, {"$set": {**st, "updated_at": now_utc()}})
+        return
+    no_shows = {o["contractor_id"] for o in outs if not o["showed_up"]}
+    booked = [r for r in reqs if r.get("response") == "booked" and r["contractor_id"] not in no_shows]
     if booked:
         latest = max(booked, key=lambda r: r["responded_at"])
         st = {"status": "scheduled", "scheduled_for": latest.get("scheduled_for")}
@@ -665,6 +692,12 @@ async def root():
 
 
 app.include_router(api)
+
+import bench_routes  # noqa: E402
+import outcome_routes  # noqa: E402
+
+app.include_router(bench_routes.router)
+app.include_router(outcome_routes.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in os.environ["FRONTEND_URL"].split(",")],

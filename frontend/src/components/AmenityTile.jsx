@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Waves, Bath, Droplets, Refrigerator, Thermometer, Sparkles, Plug } from "lucide-react";
 
 const ICONS = { pool: Waves, hot_tub: Bath, plumbing: Droplets, kitchen_appliances: Refrigerator, hvac: Thermometer, cleaning: Sparkles, custom: Plug };
@@ -18,7 +19,8 @@ export function AmenityTile({ amenity }) {
   const top = amenity.top?.[0];
   const tid = `amenity-tile-${amenity.id}`;
   return (
-    <div
+    <Link
+      href={`/bench/#amenity-${amenity.id}`}
       className="rounded-[16px] border-[1.5px] border-line bg-cream/60 p-3 flex flex-col gap-2 min-h-[112px] transition-colors duration-150 hover:bg-cream"
       data-testid={tid}
       data-amenity-label={amenity.label}
@@ -38,6 +40,6 @@ export function AmenityTile({ amenity }) {
           <span className="font-semibold text-espresso">#1 {top.business_name}</span> · {top.score}
         </p>
       )}
-    </div>
+    </Link>
   );
 }
