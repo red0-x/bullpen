@@ -85,7 +85,7 @@ export function ImportPanel({ trades, onSaved, onManual }: { trades: string[]; o
     <View style={{ gap: 16 }} testID="import-panel">
       <Card style={{ gap: 10 }}>
         <H size={22}>Paste your contractors from anywhere.</H>
-        <T size={14} muted>Notes, old texts, a spreadsheet, an email signature. Bullpup pulls out each person and shows you before saving.</T>
+        <T size={14} muted>Notes, old texts, a spreadsheet, an email signature. Bullpen pulls out each person and shows you before saving.</T>
         <Field value={text} onChangeText={setText} multiline maxLength={20000} style={{ minHeight: 180 }}
           placeholder={"Mike's Plumbing (510) 555-0100, Oakland\nJenny - hot tub repair, Tahoe, jenny@example.com"} testID="import-text-input" />
         <Btn label={busy && !rows ? "Reading…" : "Find contractors"} icon="clipboard-paste" disabled={busy || !text.trim()} onPress={extract} testID="import-extract-button" />

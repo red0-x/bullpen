@@ -8,7 +8,7 @@ import { Btn, Card, H, Icon, Mascot, POSES, T } from "@/src/ui";
 
 const STEPS = [
   ["camera", "Snap a photo of what broke", "Add a note like \u201cguests arrive Friday 4pm.\u201d"],
-  ["sparkles", "Bullpup works out what\u2019s wrong", "It confirms the trade you need and how to fix it."],
+  ["sparkles", "Bullpen works out what\u2019s wrong", "It confirms the trade you need and how to fix it."],
   ["send", "Ask the top 3 with one tap", "A friendly message is drafted. You send it from your phone."],
   ["trending-up", "The bench gets smarter", "Every outcome updates the scores, so the best people rise."],
 ] as const;
@@ -30,7 +30,7 @@ export default function Welcome() {
     <ScrollView style={s.root} contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 32, paddingHorizontal: 16, gap: 24 }} testID="landing-screen">
       <View style={s.nav}>
         <View style={s.logo}><Image source={POSES.head} style={{ width: 40, height: 40 }} /></View>
-        <H size={24} style={{ flex: 1 }}>Bullpup</H>
+        <H size={24} style={{ flex: 1 }}>Bullpen</H>
         <Btn label="Log in" variant="secondary" small onPress={() => router.push("/login")} testID="landing-login-button" />
       </View>
 
@@ -38,7 +38,7 @@ export default function Welcome() {
         <View style={s.heroArt}><Mascot pose="glove" size={220} /></View>
         <H size={42} testID="landing-title">Always a backup in the bullpen.</H>
         <T size={17} muted>
-          Bullpup keeps a ranked bench of contractors for every property and amenity. Snap a photo of what broke and get the top 3 people to call, with one tap to ask them.
+          Bullpen keeps a ranked bench of contractors for every property and amenity. Snap a photo of what broke and get the top 3 people to call, with one tap to ask them.
         </T>
         <Btn label="Build my bench, free" onPress={() => router.push({ pathname: "/login", params: { mode: "register" } })} testID="landing-register-button" />
         <Btn label="I already have an account" variant="secondary" onPress={() => router.push("/login")} testID="landing-login-secondary-button" />

@@ -15,7 +15,7 @@ export function ScreenHeader({ eyebrow, title, sub, right }: { eyebrow?: string;
     <View style={[s.wrap, { paddingTop: insets.top + 8 }]} testID="app-header">
       <View style={s.bar}>
         <View style={s.logo}><Mascot pose="head" size={38} motion="breathe" /></View>
-        <H size={22} style={{ flex: 1 }} testID="header-wordmark">Bullpup</H>
+        <H size={22} style={{ flex: 1 }} testID="header-wordmark">Bullpen</H>
         {right}
         <Pressable onPress={logout} style={s.iconBtn} hitSlop={6} testID="header-logout-button" accessibilityLabel="Log out">
           <Icon name="log-out" size={18} color={colors.brand} />

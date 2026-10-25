@@ -1,4 +1,4 @@
-# Bullpup Mobile — PRD
+# Bullpen Mobile (renamed from Bullpup) — PRD
 
 ## Original problem statement
 "Check the GitHub repository Bullpen ... copy the website onto mobile." The source is the public repo red0-x/bullpen, branch `conflict_241026_1927`, which holds the Bullpup web app (Next.js + FastAPI + Mongo). User choices: same features with a phone-friendly layout, and the backend rebuilt here.

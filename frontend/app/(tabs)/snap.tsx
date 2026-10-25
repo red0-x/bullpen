@@ -68,7 +68,7 @@ function Capture({ onPhoto, onText }: { onPhoto: (p: Photo) => void; onText: (t:
       <Mascot pose="camera" size={170} />
       <View style={{ gap: 8 }}>
         <H size={36} style={{ textAlign: "center" }}>Something broke?</H>
-        <T muted style={{ textAlign: "center" }}>Take a picture. Bullpup works out what&apos;s wrong, how to fix it and who to call.</T>
+        <T muted style={{ textAlign: "center" }}>Take a picture. Bullpen works out what&apos;s wrong, how to fix it and who to call.</T>
       </View>
       <Btn big label="Take a picture" icon="camera" onPress={takePicture} style={{ alignSelf: "stretch" }} testID="snap-take-picture-button" />
       <View style={{ flexDirection: "row", gap: 10, alignSelf: "stretch" }}>
@@ -83,8 +83,8 @@ function Capture({ onPhoto, onText }: { onPhoto: (p: Photo) => void; onText: (t:
       )}
       <Sheet open={!!perm} onClose={() => setPerm(null)} title={perm === "blocked" ? "Camera is turned off" : "Snap what broke"} testID="camera-permission-sheet">
         <T muted>{perm === "blocked"
-          ? "Bullpup needs the camera to photograph what broke. Turn it on in Settings, or upload a photo instead."
-          : "Bullpup uses your camera so it can see the problem and find the right person to fix it."}</T>
+          ? "Bullpen needs the camera to photograph what broke. Turn it on in Settings, or upload a photo instead."
+          : "Bullpen uses your camera so it can see the problem and find the right person to fix it."}</T>
         {perm === "blocked"
           ? <Btn label="Open Settings" icon="settings" onPress={() => { setPerm(null); Linking.openSettings(); }} testID="camera-open-settings-button" />
           : <Btn label="Allow camera" icon="camera" onPress={askCamera} testID="camera-allow-button" />}
@@ -214,7 +214,7 @@ export default function Snap() {
   let body;
   if (props?.length === 0) {
     body = (
-      <EmptyState pose="sniff" motion="sniff" testID="broke-no-properties" title="Add a property first" body="Bullpup needs your rentals to file the fix.">
+      <EmptyState pose="sniff" motion="sniff" testID="broke-no-properties" title="Add a property first" body="Bullpen needs your rentals to file the fix.">
         <Btn label="Go to properties" onPress={() => router.push("/(tabs)/properties")} />
       </EmptyState>
     );

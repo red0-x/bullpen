@@ -78,7 +78,7 @@ export default function FixIt() {
         {!!err && <Notice testID="fixit-error">{err}</Notice>}
         {!data && !err && <Skeleton height={140} testID="fixit-loading" />}
         {data?.items.length === 0 && (data.setup.properties === 0 || data.setup.contractors === 0) && (
-          <EmptyState pose="glove" testID="fixit-setup-state" title="Let's build your bench" body="Add your rentals and the contractors you use. Bullpup will flag gaps and stale contacts here.">
+          <EmptyState pose="glove" testID="fixit-setup-state" title="Let's build your bench" body="Add your rentals and the contractors you use. Bullpen will flag gaps and stale contacts here.">
             <Btn label="Load demo or add properties" onPress={() => router.push("/(tabs)/properties")} testID="fixit-setup-properties-button" />
             <Btn label="Import contacts" variant="secondary" onPress={() => router.push({ pathname: "/(tabs)/bench", params: { tab: "import" } })} testID="fixit-setup-import-button" />
           </EmptyState>

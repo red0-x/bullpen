@@ -1,4 +1,4 @@
-// Design tokens for Bullpup, copied from the website's design system
+// Design tokens for Bullpen, copied from the website's design system
 // (cream canvas, white cards with 1.5px line borders, cap-brown buttons with a solid lip).
 // Light theme only, matching the website.
 

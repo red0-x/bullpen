@@ -55,9 +55,9 @@ export function RequestSheet({ issue, contractor, onClose, onLogged }: { issue: 
       ) : (
         <>
           <Badge kind={ai ? "ready" : "warn"} icon={ai ? "sparkles" : undefined} testID="request-draft-source"
-            label={ai ? "Drafted by Bullpup. Edit it before you send." : "Couldn't draft right now, here's a simple template."} />
+            label={ai ? "Drafted by Bullpen. Edit it before you send." : "Couldn't draft right now, here's a simple template."} />
           <Field value={msg} onChangeText={setMsg} multiline maxLength={1500} style={{ minHeight: 170 }} testID="request-message-input" />
-          <T size={12} style={{ color: colors.muted }}>Bullpup never sends anything. You send it from your own phone.</T>
+          <T size={12} style={{ color: colors.muted }}>Bullpen never sends anything. You send it from your own phone.</T>
           <Btn label="Open in Messages" icon="message-square" busy={busy} disabled={!msg.trim()} onPress={() => log("messages")} testID="request-open-messages-button" />
           <Btn label="Copy text" icon="copy" variant="secondary" disabled={busy || !msg.trim()} onPress={() => log("copy")} testID="request-copy-button" />
         </>

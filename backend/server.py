@@ -703,7 +703,7 @@ async def undo_response(request_id: str, host: dict = Depends(current_host)):
 
 @api.get("/")
 async def root():
-    return {"app": "Bullpup", "ok": True}
+    return {"app": "Bullpen", "ok": True}
 
 
 app.include_router(api)

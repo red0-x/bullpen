@@ -99,7 +99,7 @@ export default function Properties() {
         )}
         {props === null && !error && <Skeleton height={220} testID="properties-loading" />}
         {props?.length === 0 && (
-          <EmptyState testID="properties-empty-state" title="No properties yet" body="Load the demo to see Bullpup with three sample rentals and a bench of made-up contractors." />
+          <EmptyState testID="properties-empty-state" title="No properties yet" body="Load the demo to see Bullpen with three sample rentals and a bench of made-up contractors." />
         )}
         {props?.map((p, i) => {
           const gaps = p.amenities.filter((a: any) => a.active_count === 0).length;

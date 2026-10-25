@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Bullpup",
+    "name": "Bullpen",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,7 +11,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.bullpenmirror.q3lzrl",
       "infoPlist": {
-        "NSCameraUsageDescription": "Snap what broke so Bullpup finds who fixes it",
+        "NSCameraUsageDescription": "Snap what broke so Bullpen finds who fixes it",
         "NSPhotoLibraryUsageDescription": "Pick a photo of what broke at your rental"
       }
     },
