@@ -6,6 +6,8 @@ import { toast } from "@/src/toast";
 import { makeStyles, useTheme } from "@/src/theme";
 import { Screen } from "@/src/components/Screen";
 import { AmenityIcon } from "@/src/components/AmenityIcon";
+import { useCoverPicker } from "@/src/components/CoverSheet";
+import { RentalCover } from "@/src/components/RentalArt";
 import { Badge, Btn, Card, ConfirmSheet, EmptyState, H, Icon, Notice, Skeleton, T } from "@/src/ui";
 
 function CoverageBadge({ count, testID }: { count: number; testID: string }) {
@@ -58,8 +60,8 @@ function DemoControls({ status, onChange }: { status: any; onChange: () => void 
   const own = (status?.own_contractors || 0) + (status?.own_properties || 0);
   return (
     <View style={{ flexDirection: "row", gap: 10 }} testID="demo-controls">
-      <Btn label="Load demo" icon="database" variant={status?.demo_loaded ? "secondary" : "primary"} onPress={load} disabled={busy} style={{ flex: 1 }} testID="demo-load-button" />
-      {status?.demo_loaded && <Btn label="Reset demo" icon="rotate-ccw" variant="secondary" onPress={() => setConfirm(true)} disabled={busy} style={{ flex: 1 }} testID="demo-reset-button" />}
+      <Btn label="Load demo" icon="database" small variant={status?.demo_loaded ? "secondary" : "primary"} onPress={load} disabled={busy} style={{ flex: 1 }} testID="demo-load-button" />
+      {status?.demo_loaded && <Btn label="Reset demo" icon="rotate-ccw" small variant="secondary" onPress={() => setConfirm(true)} disabled={busy} style={{ flex: 1 }} testID="demo-reset-button" />}
       <ConfirmSheet open={confirm} onClose={() => setConfirm(false)} title="Reset demo data?" confirmLabel="Yes, reset it" onConfirm={reset} busy={busy} testID="demo-reset-sheet"
         body={"This deletes all demo properties, contractors, issues and job history, then loads a fresh copy." + (own > 0 ? ` Your own ${own} record${own === 1 ? "" : "s"} you added stay untouched.` : "")} />
     </View>
@@ -100,12 +102,15 @@ function RoomsFooter({ p }: { p: any }) {
         </T>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
-        {p.geocode?.verified === false && (
-          <Btn small variant="secondary" icon="map-pin-plus" label="Pin on map" style={{ flex: 1 }} onPress={() => router.push(`/onboarding?pid=${p.id}&pin=1`)} testID={`${tid}-pin-button`} />
-        )}
         <Btn small variant="secondary" icon="scan-line" label={p.rooms_count ? "Rooms" : "Scan rooms"} style={{ flex: 1 }}
           onPress={() => router.push(`/onboarding/rooms?pid=${p.id}`)} testID={`${tid}-rooms-button`} />
+        {p.items_count > 0 && (
+          <Btn small variant="secondary" icon="plug-zap" label="Appliances" style={{ flex: 1 }} onPress={() => router.push(`/appliances?pid=${p.id}`)} testID={`${tid}-appliances-button`} />
+        )}
       </View>
+      {p.geocode?.verified === false && (
+        <Btn small variant="secondary" icon="map-pin-plus" label="Pin on map" onPress={() => router.push(`/onboarding?pid=${p.id}&pin=1`)} testID={`${tid}-pin-button`} />
+      )}
     </View>
   );
 }
@@ -126,6 +131,7 @@ export default function Properties() {
     } catch (e) { setError(errorText(e)); }
   }, []);
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  const cover = useCoverPicker(refresh);
 
   return (
     <Screen eyebrow="Your properties" title="Rentals" sub="Every amenity and how many backups you have for it." onRefresh={refresh} testID="properties-list">
@@ -146,6 +152,14 @@ export default function Properties() {
           const gaps = p.amenities.filter((a: any) => a.active_count < 2).length;
           return (
             <Card key={p.id} delay={i * 80} style={{ gap: 14 }} testID={`property-card-${p.id}`}>
+              <View style={s.banner}>
+                <RentalCover p={p} busy={cover.busyId === p.id} testID={`property-card-${p.id}-cover`} />
+                <Pressable onPress={() => cover.open(p)} style={({ pressed }) => [s.coverBtn, pressed && { transform: [{ scale: 0.95 }] }]}
+                  accessibilityLabel={`Change cover photo for ${p.name}`} testID={`property-card-${p.id}-cover-button`}>
+                  <Icon name="camera" size={15} color={colors.brand} />
+                  <T size={13} weight="semi" style={{ color: colors.brand }}>{p.cover_photo ? "Change" : "Add photo"}</T>
+                </Pressable>
+              </View>
               <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
                 <View style={{ flex: 1 }}>
                   <H size={22} testID={`property-card-${p.id}-name`}>{p.name}</H>
@@ -164,6 +178,7 @@ export default function Properties() {
             </Card>
           );
         })}
+        {cover.sheet}
     </Screen>
   );
 }
@@ -176,4 +191,7 @@ const useStyles = makeStyles((c) => ({
   tileIcon: { width: 34, height: 34, borderRadius: 8, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surfaceSecondary, alignItems: "center", justifyContent: "center" },
   setupIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: c.surfaceSecondary, borderWidth: 1.5, borderColor: c.border, alignItems: "center", justifyContent: "center" },
   foot: { gap: 10, paddingTop: 12, borderTopWidth: 1.5, borderTopColor: c.border },
+  banner: { marginTop: -20, marginHorizontal: -20, borderTopLeftRadius: 18.5, borderTopRightRadius: 18.5, overflow: "hidden" },
+  coverBtn: { position: "absolute", right: 12, bottom: 12, minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14,
+    borderRadius: 999, backgroundColor: c.surfaceSecondary, borderWidth: 1.5, borderColor: c.border },
 }));

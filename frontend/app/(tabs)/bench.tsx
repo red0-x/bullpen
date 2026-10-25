@@ -8,6 +8,7 @@ import { toast } from "@/src/toast";
 import { makeStyles, useTheme } from "@/src/theme";
 import { Screen } from "@/src/components/Screen";
 import { AmenityIcon } from "@/src/components/AmenityIcon";
+import { RentalAvatar } from "@/src/components/RentalArt";
 import { ContractorRow } from "@/src/components/bench/ContractorRow";
 import { AddContractorSheet } from "@/src/components/bench/AddContractorSheet";
 import { ImportPanel } from "@/src/components/bench/ImportPanel";
@@ -73,7 +74,7 @@ export default function Bench() {
                 <Btn label="+ Add contractor" variant="secondary" onPress={() => setAdding({})} testID="bench-add-contractor-button" />
                 {props.length >= 2 && (
                   <ChipRow testID="bench-rental-select">
-                    {props.map((p) => <Chip key={p.id} label={p.name} on={shown === p.id} onPress={() => choose(p.id)} testID={`bench-rental-option-${p.id}`} />)}
+                    {props.map((p) => <Chip key={p.id} label={p.name} avatar={<RentalAvatar p={p} />} on={shown === p.id} onPress={() => choose(p.id)} testID={`bench-rental-option-${p.id}`} />)}
                     <Chip label="All rentals" on={shown === "all"} onPress={() => choose("all")} testID="bench-rental-option-all" />
                   </ChipRow>
                 )}

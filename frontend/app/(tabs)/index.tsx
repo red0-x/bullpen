@@ -6,15 +6,39 @@ import { URGENCY, fmtWhen } from "@/src/format";
 import { useContractorActions, Actions } from "@/src/contractorActions";
 import { toast } from "@/src/toast";
 import { Screen } from "@/src/components/Screen";
+import { DoneSheet, ServiceTarget } from "@/src/components/ServiceSheets";
 import { Badge, Btn, Card, EmptyState, H, Notice, Skeleton, T } from "@/src/ui";
 
 const KIND: Record<string, ["warn" | "neutral", string]> = {
   issue: ["warn", "Waiting on a contractor"],
   outcome: ["neutral", "Outcome not logged"],
+  service: ["warn", "Service due"],
   gap: ["warn", "Coverage gap"],
   stale: ["neutral", "Stale contact"],
   watch: ["warn", "Bench watch"],
 };
+
+function ServiceAction({ item, onDone }: { item: any; onDone: (t: ServiceTarget) => void }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const tid = `fixit-action-${item.id}`;
+  const book = async () => {
+    setBusy(true);
+    try {
+      const r = await api(`/items/${item.item_id}/service/book`, { method: "POST" });
+      router.push(`/issue/${r.id}`);
+    } catch (e) { toast.error(errorText(e)); } finally { setBusy(false); }
+  };
+  return (
+    <View style={{ gap: 8 }}>
+      <Btn label="Mark done" icon="check" onPress={() => onDone({ id: item.item_id, name: item.title.split(":")[0] })} testID={tid} />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Btn label="Book a pro" icon="calendar-plus" variant="secondary" small busy={busy} style={{ flex: 1 }} onPress={book} testID={`${tid}-book`} />
+        <Btn label="History" icon="history" variant="secondary" small style={{ flex: 1 }} onPress={() => router.push(`/appliance/${item.item_id}`)} testID={`${tid}-history`} />
+      </View>
+    </View>
+  );
+}
 
 function ItemAction({ item, actions, reload }: { item: any; actions: Actions; reload: () => void }) {
   const router = useRouter();
@@ -57,18 +81,20 @@ export default function FixIt() {
   const router = useRouter();
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState("");
+  const [done, setDone] = useState<ServiceTarget | null>(null);
 
   const load = useCallback(() => api("/fixit").then((d) => { setData(d); setErr(""); }).catch((e) => setErr(errorText(e))), []);
   const actions = useContractorActions(load);
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  const tiles: [string, string][] = [["waiting", "Waiting"], ...(data?.counts.service ? [["service", "Service"] as [string, string]] : []), ["gaps", "Gaps"], ["stale", "Stale"]];
 
   return (
     <Screen eyebrow="Home" title="Fix-it list" sub="What needs you today, in order." onRefresh={load} testID="fixit-list">
         <Btn big label="Something broke" icon="siren" onPress={() => router.push("/(tabs)/snap")} testID="fixit-something-broke-button" />
         {data?.items.length > 0 && (
           <View style={{ flexDirection: "row", gap: 10 }} testID="fixit-counts">
-            {[["waiting", "Waiting"], ["gaps", "Gaps"], ["stale", "Stale"]].map(([k, l]) => (
-              <Card key={k} style={{ flex: 1, padding: 14, gap: 0 }}>
+            {tiles.map(([k, l]) => (
+              <Card key={k} style={{ flex: 1, padding: 14, gap: 0 }} testID={`fixit-count-${k}`}>
                 <H size={28}>{data.counts[k] + (k === "waiting" ? data.counts.outcomes : 0)}</H>
                 <T size={13} muted>{l}</T>
               </Card>
@@ -91,7 +117,7 @@ export default function FixIt() {
         {data?.items.map((i: any, idx: number) => (
           <Card key={i.id} delay={Math.min(idx, 8) * 50} style={{ gap: 12 }} testID={`fixit-item-${i.id}`}>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-              <Badge kind={KIND[i.kind][0]} label={i.kind === "issue" && i.status === "open" ? "Needs a contractor" : KIND[i.kind][1]} />
+              <Badge kind={KIND[i.kind][0]} label={i.kind === "issue" && i.status === "open" ? "Needs a contractor" : i.kind === "service" && i.overdue ? "Service overdue" : KIND[i.kind][1]} />
               {i.urgency && <Badge label={URGENCY[i.urgency]} />}
             </View>
             <View style={{ gap: 2 }}>
@@ -104,9 +130,10 @@ export default function FixIt() {
                 </T>
               )}
             </View>
-            <ItemAction item={i} actions={actions} reload={load} />
+            {i.kind === "service" ? <ServiceAction item={i} onDone={setDone} /> : <ItemAction item={i} actions={actions} reload={load} />}
           </Card>
         ))}
+        <DoneSheet target={done} onClose={() => setDone(null)} onSaved={load} />
     </Screen>
   );
 }

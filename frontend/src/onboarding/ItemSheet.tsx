@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
+import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { api, errorText, photoSource } from "@/src/api";
@@ -9,7 +10,8 @@ import { Badge, Btn, Chip, ChipWrap, Field, Notice, Sheet, T } from "@/src/ui";
 const EMPTY = { name: "", category: "appliance", brand: "", model: "", notes: "" };
 
 // Add or edit one tagged appliance / fixture.
-export function ItemSheet({ draft, roomType, roomName, onClose, onSaved }: { draft: ItemDraft | null; roomType: string; roomName?: string; onClose: () => void; onSaved: () => void }) {
+export function ItemSheet({ draft, roomType, roomName, onClose, onSaved, showHistory = true }: { draft: ItemDraft | null; roomType: string; roomName?: string; onClose: () => void; onSaved: () => void; showHistory?: boolean }) {
+  const router = useRouter();
   const [f, setF] = useState(EMPTY);
   const [busy, setBusy] = useState<"" | "save" | "delete">("");
   const [error, setError] = useState("");
@@ -78,6 +80,10 @@ export function ItemSheet({ draft, roomType, roomName, onClose, onSaved }: { dra
       <Field label="Notes" value={f.notes} onChangeText={set("notes")} placeholder="Installed 2021, filter under the sink…" multiline maxLength={500} testID="item-notes-input" />
       {!!error && <Notice testID="item-sheet-error">{error}</Notice>}
       <Btn label={editing ? "Save changes" : "Tag it"} icon="check" busy={busy === "save"} disabled={!f.name.trim() || !!busy} onPress={save} testID="item-save-button" />
+      {editing && showHistory && (
+        <Btn label="Service reminders & history" icon="history" variant="secondary" disabled={!!busy}
+          onPress={() => { const id = draft!.id; onClose(); router.push(`/appliance/${id}`); }} testID="item-history-button" />
+      )}
       {editing && <Btn label="Remove item" icon="trash-2" variant="secondary" busy={busy === "delete"} disabled={!!busy} onPress={remove} testID="item-delete-button" />}
     </Sheet>
   );

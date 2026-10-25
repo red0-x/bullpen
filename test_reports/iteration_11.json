@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 11 (cover photos, service reminders, appliance history, job costs). Backend: main agent's suite and regression suites all pass (80/80 with -n 0: iter11 + iter7 + iter8 + onboarding*). My new edge suite test_iter11_edge.py passes 4 of 5. Passing: email claim (emailed_for), undo only the newest log, date/cost validation, book reuse + HVAC trade guess, Fix-it card hidden while a job is open, outcome cost -> service log, editing to a no-show reverts, cover ownership. 1 real bug: a finished service job vanishes from history if reminders were stopped while the job was open. Frontend (375x667, test_ui11) tested end to end and all working: Fix-it Service tile and card with Mark done / Book a pro / History; DoneSheet (day, pro, cost, note) -> toast + Undo -> card comes back; appliance screen stats, service card, ScheduleSheet (interval, month chips, email switch, save, stop, set again); Book a pro -> issue with Routine service badge -> issue-appliance row opens the appliance, 'Open job' state; outcome form shows the cost field only when Showed up = Yes -> outcome cost badge $185.25 -> appliance history 'Service done $185.25 · Alpine Plumbing', next due +1 year; Rentals cover art in a different colour per rental, real file-chooser upload swaps banner to photo, 'Change', remove back to the drawing; Appliances list -> appliance; Bench and Snap rental chip avatars (svg or photo); ItemSheet item-history-button -> appliance (hidden in the appliance-screen edit sheet); Pin on map on its own row for an unverified rental. No console errors. test_ui11 state restored afterwards (water heater yearly service due Oct 30, no logs or jobs, no covers).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/items/{id}/history (+ sync_service_job)", "issue": "A finished service job disappears from history if the item had no service schedule when the showed-up outcome was saved (host stopped reminders while the job was open). sync_service_job only records a log when item.service exists, and item_history skips kind='service' resolved issues. Result: repairs=[] and services=[], so the cost and contractor are lost from history and total_cost. Reproduced by tests/test_iter11_edge.py::test_service_job_after_stop_keeps_history."},
+      {"endpoint": "send_due_reminders", "issue": "emailed_for is claimed before send_email. If the send fails (EmailError), that due date is never retried. Consider un-claiming on failure."},
+      {"endpoint": "DELETE /api/service-logs/{id}", "issue": "Undo restores prev_service as a whole, so any interval or email change made after logging is reverted too (edge case)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Appliance service card", "issue": "Secondary button label is cut off as 'Edit remin...' at 375px width", "testID": "appliance-edit-service-button", "priority": "low"},
+      {"component": "ScheduleSheet (edit)", "issue": "Changing the interval (e.g. yearly -> every 6 months) does not recompute next_due from last_done. The due date stays a year out unless the host also picks a month.", "testID": "schedule-interval-6", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Rentals", "issues": ["property-card-<id>-cover-button ('Add photo'/'Change') is about 34-35px tall, under the 44px minimum touch target", "House-drawing palette is hash(id) % 6 palettes, so two rentals can easily get the same colour (about 44% chance with 3 rentals). This conflicts with the user's 'different colour per rental' choice. Assign palettes by the rental's index in the host's list instead.", "'Load demo' / 'Reset demo' buttons are cut off ('Load de...', 'Reset de...') when shown side by side"]},
+      {"screen": "Appliance", "issues": ["'Rheem · XE50' is repeated in both the screen sub-title and the header card", "Interval labels don't match: backend/Fix-it say 'Yearly', the app says 'Every year'"]},
+      {"screen": "Issue (service job)", "issues": ["A service job is titled 'Plumbing at Tahoe Cabin'. A title like 'Water heater service at Tahoe Cabin' would be clearer."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter11_maintenance.py", "/app/backend/tests/test_iter11_edge.py", "/app/test_reports/pytest/iter11_edge.xml"],
+  "action_items": [
+    "Fix the service-job history hole: in sync_service_job, when done and item has no service, still insert a service_log (without moving next_due), or have item_history keep resolved service issues that have no service_log. Re-run tests/test_iter11_edge.py.",
+    "Give rentals distinct house colours (palette by index in the host's sorted property list) so ≤6 rentals never share a colour",
+    "Make property cover button at least 44px tall; fix the truncated 'Edit reminder' label (shorter label or stack the buttons)",
+    "Optional: when the interval changes in the ScheduleSheet and last_done exists, suggest last_done + interval as the due date",
+    "Optional: un-claim emailed_for when send_email fails so the reminder is retried"
+  ],
+  "critical_code_review_comments": [
+    "maintenance_routes.py is a clean module: Pydantic validation, ownership checks via get_owned, _id excluded, atomic email claim",
+    "record_service in sync uses outcome datetime .date() (UTC), so a late-evening outcome in US time zones logs the next day",
+    "Manual 'Mark done' while a service job is open, followed by the job's showed-up outcome, creates two service logs for one service"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter11_edge.py (new)"],
+  "success_rate": {"backend": "84/85 (98.8%), 80/80 for the main agent's suites", "frontend": "100% of the requested flows working; minor design issues only"},
+  "seed_data_creation": "None kept. Temporary users from the pytest suite (test_ob_*@example.com). test_iter11_pin user was created and deleted. test_ui11 restored: service job, outcome, request and service logs deleted; water heater service back to yearly 2026-10-30; Joshua Tree cover removed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Server date is 2026-10-25. test_ui11 Tahoe Cabin water heater item 3babe8fd-b37e-42c6-954d-ef817f65b163, property fc8d31be-...; Alpine Plumbing contractor c5d0de66-.... Sheets animate in: wait ~1s after opening before clicking, or use dispatch_event('click'). The cover library upload works with page.expect_file_chooser. To reach the outcome form, book via the API: POST /requests then POST /requests/{id}/response {booked, scheduled_for}.",
+  "rca_of_issue": "History hole: sync_service_job's branch `elif done and item.get('service')` skips logging when the schedule was removed, and item_history `continue`s past resolved kind='service' issues, assuming a service_log exists. Repro: PUT service -> POST book -> DELETE service -> POST outcome showed_up with cost -> GET history shows no record."
+}

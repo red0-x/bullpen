@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { api, errorText } from "@/src/api";
 import { fmtWhen } from "@/src/format";
+import { money, parseMoney } from "@/src/service";
 import { toast } from "@/src/toast";
 import { useTheme } from "@/src/theme";
 import { Badge, Btn, Card, Chip, Field, H, Icon, T } from "@/src/ui";
@@ -18,11 +19,11 @@ function YesNo({ label, value, onChange, disabled, testID }: { label: string; va
   );
 }
 
-type F = { showed_up: boolean | null; on_time: boolean | null; rating: number; note: string };
+type F = { showed_up: boolean | null; on_time: boolean | null; rating: number; note: string; cost?: string };
 
 export function OutcomeForm({ initial, onSubmit, busy, submitLabel = "Save outcome", testID = "outcome-form" }: { initial?: F; onSubmit: (f: any) => void; busy?: boolean; submitLabel?: string; testID?: string }) {
   const { colors } = useTheme();
-  const [f, setF] = useState<F>(initial || { showed_up: null, on_time: null, rating: 0, note: "" });
+  const [f, setF] = useState<F>(initial || { showed_up: null, on_time: null, rating: 0, note: "", cost: "" });
   const set = (p: Partial<F>) => setF({ ...f, ...p });
   const ready = f.showed_up !== null && f.rating > 0 && (f.showed_up === false || f.on_time !== null);
   return (
@@ -42,7 +43,10 @@ export function OutcomeForm({ initial, onSubmit, busy, submitLabel = "Save outco
         </View>
       </View>
       <Field label="Note (optional)" value={f.note} maxLength={1000} onChangeText={(v) => set({ note: v })} placeholder="Fixed the heater, left it clean" testID={`${testID}-note`} />
-      <Btn label={submitLabel} busy={busy} disabled={!ready} onPress={() => onSubmit({ ...f, on_time: !!f.on_time })} testID={`${testID}-submit`} />
+      {f.showed_up === true && (
+        <Field label="What did it cost? (optional)" value={f.cost || ""} maxLength={12} keyboardType="decimal-pad" onChangeText={(v) => set({ cost: v })} placeholder="$0" testID={`${testID}-cost`} />
+      )}
+      <Btn label={submitLabel} busy={busy} disabled={!ready} onPress={() => onSubmit({ showed_up: f.showed_up, rating: f.rating, note: f.note, on_time: !!f.on_time, cost: f.showed_up ? parseMoney(f.cost || "") : null })} testID={`${testID}-submit`} />
     </View>
   );
 }
@@ -118,11 +122,12 @@ export function OutcomeList({ outcomes, onEdited }: { outcomes: any[]; onEdited:
           <View style={{ flexDirection: "row", gap: 6 }}>
             <Badge kind={o.showed_up ? "ready" : "warn"} label={o.showed_up ? (o.on_time ? "On time" : "Late") : "No-show"} />
             <Badge label={`${o.rating} stars`} />
+            {o.cost != null && <Badge label={money(o.cost)} testID={`outcome-${o.id}-cost`} />}
           </View>
           {!!o.note && <T size={14} muted>{o.note}</T>}
           {editing === o.id && (
             <View style={{ borderTopWidth: 1.5, borderTopColor: colors.border, paddingTop: 12 }}>
-              <OutcomeForm testID={`outcome-edit-form-${o.id}`} initial={{ showed_up: o.showed_up, on_time: o.on_time, rating: o.rating, note: o.note }}
+              <OutcomeForm testID={`outcome-edit-form-${o.id}`} initial={{ showed_up: o.showed_up, on_time: o.on_time, rating: o.rating, note: o.note, cost: o.cost != null ? String(o.cost) : "" }}
                 onSubmit={(f) => save(o, f)} busy={busy} submitLabel="Save changes" />
             </View>
           )}

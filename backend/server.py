@@ -62,6 +62,7 @@ class Property(DocBase):
     geocode: Optional[dict] = None  # {lat, lng, place_id, location_type, city, state, postal_code, country}
     onboarding: bool = False  # created through the onboarding flow
     onboarding_complete: bool = False
+    cover_photo: Optional[str] = None  # /api/files/... url; the app draws a house when empty
 
 
 class Amenity(DocBase):
@@ -91,6 +92,7 @@ class Issue(DocBase):
     property_id: str
     amenity_id: Optional[str] = None
     item_id: Optional[str] = None  # the tagged appliance/fixture (from room setup) this is about
+    kind: Literal["repair", "service"] = "repair"  # service = a booked routine service for item_id
     photo_url: Optional[str] = None
     host_note: str = ""
     ai_diagnosis: Optional[str] = None
@@ -125,6 +127,7 @@ class JobOutcome(DocBase):
     on_time: bool
     rating: int = Field(ge=1, le=5)
     note: str = ""
+    cost: Optional[float] = None  # what the host paid, typed when logging the outcome
     date: datetime
     revision_of: Optional[str] = None
 
@@ -330,9 +333,18 @@ def public_contractor(c: dict) -> dict:
 
 
 # ---------- Properties & bench ----------
+# One stable rental order everywhere (demo rentals share a created_at), so palette colours match on every screen.
+RENTAL_ORDER = [("created_at", 1), ("id", 1)]
+
+
+async def rental_position(host_id: str, property_id: str) -> int:
+    ids = [p["id"] for p in await db.properties.find({"host_id": host_id}, {"_id": 0, "id": 1}).sort(RENTAL_ORDER).to_list(100)]
+    return ids.index(property_id) if property_id in ids else 0
+
+
 @api.get("/properties")
 async def list_properties(host: dict = Depends(current_host)):
-    props = await db.properties.find({"host_id": host["id"]}, {"_id": 0}).sort("created_at", 1).to_list(100)
+    props = await db.properties.find({"host_id": host["id"]}, {"_id": 0}).sort(RENTAL_ORDER).to_list(100)
     amenities = await db.amenities.find({"host_id": host["id"]}, {"_id": 0}).to_list(1000)
     contractors = await scored_contractors(host["id"])
     room_n, item_n = {}, {}
@@ -341,7 +353,7 @@ async def list_properties(host: dict = Depends(current_host)):
     for i in await db.items.find({"host_id": host["id"]}, {"property_id": 1}).to_list(20000):
         item_n[i["property_id"]] = item_n.get(i["property_id"], 0) + 1
     out = []
-    for p in props:
+    for n, p in enumerate(props):
         tiles = []
         for a in [a for a in amenities if a["property_id"] == p["id"]]:
             bench = rank([dict(c) for c in contractors if covers(c, a, p)])
@@ -349,7 +361,7 @@ async def list_properties(host: dict = Depends(current_host)):
             tiles.append(ser({**a, "active_count": len(active), "total_count": len(bench),
                               "top": [{"id": c["id"], "business_name": c["business_name"], "score": c["score"],
                                        "reason": c["reason"]} for c in active[:3]]}))
-        out.append(ser({**p, "amenities": tiles, "rooms_count": room_n.get(p["id"], 0), "items_count": item_n.get(p["id"], 0)}))
+        out.append(ser({**p, "amenities": tiles, "rooms_count": room_n.get(p["id"], 0), "items_count": item_n.get(p["id"], 0), "palette": n}))
     return out
 
 
@@ -385,6 +397,7 @@ async def clear_demo(host_id: str):
     await db.issues.delete_many({"host_id": host_id, "id": {"$in": linked}})
     await db.requests.delete_many({"host_id": host_id, "issue_id": {"$in": linked}})
     await db.issue_photos.delete_many({"host_id": host_id, "issue_id": {"$in": linked}})
+    await db.service_logs.delete_many({"host_id": host_id, "property_id": {"$in": demo_props}})
     await db.rooms.delete_many({"host_id": host_id, "property_id": {"$in": demo_props}})
     await db.items.delete_many({"host_id": host_id, "property_id": {"$in": demo_props}})
     await db.watch_runs.delete_many({"host_id": host_id})
@@ -475,11 +488,12 @@ class ResponseIn(BaseModel):
 
 
 async def host_catalog(host_id: str) -> list:
-    props = await db.properties.find({"host_id": host_id}, {"_id": 0}).sort("created_at", 1).to_list(100)
+    props = await db.properties.find({"host_id": host_id}, {"_id": 0}).sort(RENTAL_ORDER).to_list(100)
     amenities = await db.amenities.find({"host_id": host_id}, {"_id": 0}).to_list(1000)
     rooms = {r["id"]: r for r in await db.rooms.find({"host_id": host_id}, {"_id": 0}).to_list(2000)}
     items = await db.items.find({"host_id": host_id}, {"_id": 0}).to_list(5000)
-    for p in props:
+    for n, p in enumerate(props):
+        p["palette"] = n  # the app colours each rental's house drawing by its position, so no two match
         p["amenities"] = [a for a in amenities if a["property_id"] == p["id"]]
         p["items"] = [{**i, "room": item_room(rooms.get(i["room_id"]))} for i in items if i["property_id"] == p["id"]]
     return props
@@ -771,8 +785,10 @@ import bench_routes  # noqa: E402
 import outcome_routes  # noqa: E402
 import directory_routes  # noqa: E402
 import onboarding_routes  # noqa: E402
+import maintenance_routes  # noqa: E402
 
 app.include_router(bench_routes.router)
+app.include_router(maintenance_routes.router)
 app.include_router(outcome_routes.router)
 app.include_router(directory_routes.router)
 app.include_router(onboarding_routes.router)
@@ -798,6 +814,9 @@ async def startup():
         await db[coll].create_index("id", unique=True)
         await db[coll].create_index([("host_id", 1), ("property_id", 1)])
     await db.files.create_index([("path", 1), ("host_id", 1)])
+    await db.service_logs.create_index([("host_id", 1), ("item_id", 1)])
+    await db.items.create_index("service.next_due", sparse=True)
+    maintenance_routes.start_reminders()
     try:
         from onboarding_routes import init_storage
         init_storage()

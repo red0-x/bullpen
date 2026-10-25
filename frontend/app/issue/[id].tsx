@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@/src/auth";
 import { Image } from "expo-image";
@@ -19,6 +19,7 @@ import { itemIcon, itemLabel } from "@/src/onboarding/shared";
 const STATUS: Record<string, "warn" | "ready"> = { open: "warn", waiting: "warn", scheduled: "ready", resolved: "ready" };
 
 function IssueHeader({ data }: { data: any }) {
+  const router = useRouter();
   const { colors } = useTheme();
   const s = useStyles();
   const { issue, property } = data;
@@ -31,15 +32,18 @@ function IssueHeader({ data }: { data: any }) {
       )}
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
         <Badge kind={STATUS[issue.status]} label={issue.status[0].toUpperCase() + issue.status.slice(1)} testID="issue-status" />
+        {issue.kind === "service" && <Badge icon="calendar-clock" label="Routine service" testID="issue-service-badge" />}
         {issue.urgency && <Badge label={URGENCY[issue.urgency]} />}
         <Badge label={issue.trade_needed} />
       </View>
       <T muted testID="issue-diagnosis">{issue.ai_diagnosis || issue.host_note}</T>
       {data.item && (
-        <View style={s.appliance} testID="issue-appliance">
+        <Pressable onPress={() => router.push(`/appliance/${data.item.id}`)} style={({ pressed }) => [s.appliance, pressed && { opacity: 0.75 }]} testID="issue-appliance">
           <Icon name={itemIcon(data.item.name, data.item.category)} size={16} color={colors.brand} />
           <T size={14} weight="semi" style={{ flex: 1 }} testID="issue-appliance-label">{itemLabel(data.item)}</T>
-        </View>
+          <T size={12} weight="semi" style={{ color: colors.brand }}>History</T>
+          <Icon name="chevron-right" size={16} color={colors.brand} />
+        </Pressable>
       )}
       <View style={{ gap: 4 }}>
         <View style={s.row}><Icon name="map-pin" size={14} color={colors.muted} /><T size={14} muted style={{ flex: 1 }}>{property.address}</T></View>
@@ -144,7 +148,7 @@ function IssueView() {
 
   return (
     <>
-      <Screen back title={data ? `${data.amenity?.label || data.issue.trade_needed} at ${data.property.name}` : "Issue"} testID="issue-screen">
+      <Screen back title={data ? `${data.issue.kind === "service" && data.item ? `${data.item.brand ? `${data.item.brand} ${data.item.name.toLowerCase()}` : data.item.name} service` : data.amenity?.label || data.issue.trade_needed} at ${data.property.name}` : "Issue"} testID="issue-screen">
         {err ? (
           <EmptyState pose="sniff" motion="sniff" title="We couldn't find that issue" body={err} testID="issue-error">
             <Btn label="Back to Fix-it list" onPress={() => router.replace("/(tabs)")} />

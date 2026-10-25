@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 12 retest of the iteration 11 fixes. Backend: test_iter11_edge.py + test_iter11_maintenance.py pass 12/12 with -n 0, so the history fix works (a service job finished after reminders were stopped still logs cost + contractor). New tests/test_iter12_retest.py passes 1 of 3. /api/properties palette is 0,1,2 (pass), but /api/onboarding?property_id= gives palette 0 for all 3 demo rentals. Frontend (375x667, test_ui11) verified: Rentals cover art has 3 different colours (#FBE3DA / #E5EBD8 / #DCE8EC); Bench chip avatars match; cover button offsetHeight is 44px; 'Load demo' / 'Reset demo' not truncated; appliance card caption reads 'Next service · every year'; 'Book a pro' / 'Edit' not truncated; ScheduleSheet with last_done 2026-10-25 moves due text to Apr 25 2027 (6), Jan 25 2027 (3) and Oct 25 2027 (12); Fix-it subtitle reads 'Every year · Garage · Oct 30'; issue title is 'Rheem water heater service at Tahoe Cabin' from both Fix-it and the appliance screen, with the Routine service badge; Fix-it Mark done -> toast Undo -> card comes back. One fix NOT working: the /appliances?pid= cover is terracotta (palette 0) for all 3 rentals, so Joshua Tree and Oakland don't match their Rentals card colour. No console errors. test_ui11 restored: water heater yearly, due 2026-10-30, no logs, no jobs, no covers.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/onboarding?property_id= (onboarding_routes.state)", "issue": "palette is count_documents(created_at < prop.created_at). seed.py:103 gives every demo rental the same created_at (now), so all 3 demo rentals get palette 0. Reproduced by tests/test_iter12_retest.py::test_onboarding_palette_matches and ::test_created_at_unique (all 3 created_at = 2026-10-25T06:28:24.995). Also, /properties and host_catalog sort only by created_at, so with tied timestamps the order (and so the colour) isn't guaranteed to stay the same."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Appliances list cover (/appliances?pid=)", "issue": "The house drawing uses palette 0 (terracotta #FBE3DA) for every rental, so Joshua Tree (sage) and Oakland (lake) don't match their Rentals card or Bench chip. Cause: the backend palette bug above.", "testID": "appliances-cover-art", "priority": "medium"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Appliance", "issues": ["'Next service · every year' wraps onto 2 lines next to the 'Due in 5 days' badge at 375px (cosmetic)", "'Rheem · XE50' still shows in both the screen sub-title and the header card", "ScheduleSheet: after picking 'Every 6 months' (due Apr 2027), no month chip is selected because the chips only cover the next few months"]},
+      {"screen": "Issue (service job)", "issues": ["The auto diagnosis text still says 'Routine yearly service...', which doesn't match the 'Every year' wording elsewhere (minor)"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter12_retest.py", "/app/backend/tests/test_iter11_edge.py", "/app/backend/tests/test_iter11_maintenance.py", "/app/test_reports/pytest/iter12.xml"],
+  "action_items": [
+    "Fix the palette for /onboarding (used by /appliances?pid=): work out the index the same way /properties does. For example, add a shared helper that fetches the host's rentals sorted by [('created_at',1),('id',1)] and returns the rental's index. Use that same sort in list_properties and host_catalog so tied timestamps always give the same order.",
+    "In seed.py, give the demo rentals different created_at values (e.g. now - timedelta(seconds=len(props)-i)) so the order is clear. Existing hosts already have tied timestamps, so the helper fix is still needed.",
+    "Re-run tests/test_iter12_retest.py (the created_at uniqueness test only passes after a demo reset once the seed is fixed. It's informational, the palette match test is the key one)."
+  ],
+  "critical_code_review_comments": [
+    "onboarding_routes.state palette uses count_documents with $lt created_at, which breaks on tied timestamps and doesn't match the enumerate() index used in server.py. Two different ways of working out the same value."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter12_retest.py"],
+  "success_rate": {"backend": "13/15 (iter11 suites 12/12; new palette suite 1/3)", "frontend": "6/7 fixes verified (the /appliances cover colour fails) + Fix-it Mark done/Undo smoke passes"},
+  "seed_data_creation": "None kept. Created and then removed 2 service logs and 2 service issues on test_ui11 during the tests.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_ui11 water heater item 3babe8fd-b37e-42c6-954d-ef817f65b163 (Tahoe fc8d31be..., Joshua 902c74b1..., Oakland cd57f1d1...). Delete a service job with DELETE /api/issues/{id} and undo a log with DELETE /api/service-logs/{id}. The cover button measures about 42px with getBoundingClientRect while the card entrance animation is still scaling. offsetHeight is 44. Snap chips only render in Snap edit mode.",
+  "rca_of_issue": "Demo seed inserts all properties with one `now` timestamp -> state() palette = count(created_at < same) = 0 for every rental -> RentalCover on /appliances always terracotta."
+}

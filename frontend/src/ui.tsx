@@ -148,13 +148,15 @@ export function Notice({ children, kind = "warn", testID }: { children: ReactNod
   );
 }
 
-export function Chip({ label, on, onPress, testID, warn }: { label: string; on?: boolean; onPress?: () => void; testID?: string; warn?: boolean }) {
+export function Chip({ label, on, onPress, testID, warn, avatar }: { label: string; on?: boolean; onPress?: () => void; testID?: string; warn?: boolean; avatar?: ReactNode }) {
   const { colors } = useTheme();
   return (
     <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ selected: !!on }} aria-selected={!!on} hitSlop={{ top: 6, bottom: 6 }} onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress?.(); }}
-      style={({ pressed }) => ({ flexShrink: 0, height: 36, transform: [{ scale: pressed ? 0.95 : 1 }], paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.5, justifyContent: "center",
+      style={({ pressed }) => ({ flexShrink: 0, height: 36, transform: [{ scale: pressed ? 0.95 : 1 }], paddingHorizontal: 14, paddingLeft: avatar ? 5 : 14, borderRadius: 999, borderWidth: 1.5, justifyContent: "center",
+        flexDirection: "row", alignItems: "center", gap: 7,
         backgroundColor: on ? colors.surfaceInverse : warn ? colors.warningSoft : colors.surfaceSecondary,
         borderColor: on ? colors.surfaceInverse : warn ? colors.warningBorder : colors.border })}>
+      {avatar}
       <Text style={{ fontFamily: fonts.semi, fontSize: 14, color: on ? colors.onSurfaceInverse : warn ? colors.warning : colors.onSurface }}>{label}</Text>
     </Pressable>
   );

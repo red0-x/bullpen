@@ -1,10 +1,11 @@
 """Layer 4 (job outcomes and live re-rank) and Layer 5 (health checks and the Fix-it list)."""
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from maintenance_routes import DUE_SOON_DAYS, EVERY, due_text, short_label, sync_service_job
 from scoring import covers, rank
 from server import (JobOutcome, current_host, db, get_owned, host_catalog, now_utc, scored_contractors, ser,
                     sync_issue_status)
@@ -20,6 +21,7 @@ class OutcomeIn(BaseModel):
     on_time: bool = False
     rating: int = Field(ge=1, le=5)
     note: str = Field("", max_length=1000)
+    cost: Optional[float] = Field(None, ge=0, le=1_000_000)
 
 
 def day(d) -> str:
@@ -89,10 +91,11 @@ async def log_outcome(issue_id: str, body: OutcomeIn, host: dict = Depends(curre
     before = await slot_ranks(host["id"], issue, prop)
     o = JobOutcome(host_id=host["id"], contractor_id=cid, issue_id=issue_id, request_id=req["id"] if req else None,
                    showed_up=body.showed_up, on_time=body.on_time and body.showed_up, rating=body.rating,
-                   note=body.note, date=now).model_dump()
+                   note=body.note, cost=body.cost if body.showed_up else None, date=now).model_dump()
     o["undo"] = {"last_contacted": await touch_everyone(issue_id, now)}
     await db.job_outcomes.insert_one(o)
     await sync_issue_status(issue_id)
+    await sync_service_job(host["id"], issue_id)
     after = await slot_ranks(host["id"], issue, prop)
     o.pop("_id", None)
     o.pop("undo")
@@ -112,6 +115,7 @@ async def undo_outcome(outcome_id: str, host: dict = Depends(current_host)):
     for cid, lc in (o.get("undo") or {}).get("last_contacted", {}).items():
         await db.contractors.update_one({"id": cid}, {"$set": {"last_contacted": lc}})
     await sync_issue_status(o["issue_id"])
+    await sync_service_job(host["id"], o["issue_id"])
     return {"ok": True}
 
 
@@ -123,11 +127,13 @@ async def edit_outcome(outcome_id: str, body: OutcomeIn, host: dict = Depends(cu
     before = await slot_ranks(host["id"], issue, prop)
     o = JobOutcome(host_id=host["id"], demo=old.get("demo", False), contractor_id=old["contractor_id"],
                    issue_id=old["issue_id"], request_id=old.get("request_id"), showed_up=body.showed_up,
-                   on_time=body.on_time and body.showed_up, rating=body.rating, note=body.note, date=old["date"],
+                   on_time=body.on_time and body.showed_up, rating=body.rating, note=body.note,
+                   cost=body.cost if body.showed_up else None, date=old["date"],
                    revision_of=old.get("revision_of") or old["id"]).model_dump()
     await db.job_outcomes.insert_one(o)
     o.pop("_id", None)
     await sync_issue_status(old["issue_id"])
+    await sync_service_job(host["id"], old["issue_id"])
     after = await slot_ranks(host["id"], issue, prop)
     return {"outcome": ser(o), "changes": rank_changes(before, after, old["contractor_id"], f"edited, {describe(o)}")}
 
@@ -145,7 +151,7 @@ async def fixit(host: dict = Depends(current_host)):
     contractors = await scored_contractors(host["id"])
     issues = await db.issues.find({"host_id": host["id"], "status": {"$in": ["open", "waiting", "scheduled"]}},
                                   {"_id": 0}).sort("created_at", 1).to_list(500)
-    items = {"waiting": [], "outcomes": [], "gaps": [], "stale": [], "watch": []}
+    items = {"waiting": [], "outcomes": [], "service": [], "gaps": [], "stale": [], "watch": []}
 
     for i in issues:
         p = props.get(i["property_id"])
@@ -153,6 +159,9 @@ async def fixit(host: dict = Depends(current_host)):
             continue
         a = next((x for x in p["amenities"] if x["id"] == i.get("amenity_id")), None)
         what = (a["label"] if a else i["trade_needed"]) or "Issue"
+        if i.get("kind") == "service":
+            it = next((x for x in p["items"] if x["id"] == i.get("item_id")), None)
+            what = f"{short_label(it)} service" if it else "Service"
         base = {"issue_id": i["id"], "property": p["name"], "subtitle": i.get("ai_diagnosis") or i.get("host_note"),
                 "urgency": i.get("urgency"), "guest_arrival": ser(i).get("guest_arrival")}
         if i["status"] == "scheduled":
@@ -163,6 +172,24 @@ async def fixit(host: dict = Depends(current_host)):
             items["waiting"].append({**base, "id": f"issue-{i['id']}", "kind": "issue", "status": i["status"],
                                      "title": f"{what} at {p['name']}: " + ("waiting on a reply" if i["status"] == "waiting" else "needs a contractor"),
                                      "action": "Find help" if i["status"] == "open" else "Check replies"})
+
+    # Appliance services due within DUE_SOON_DAYS (or overdue). A booked service job shows as its issue instead.
+    t = now.date()
+    booked_service = {i.get("item_id") for i in issues if i.get("kind") == "service"}
+    for p in catalog:
+        for it in p["items"]:
+            svc = it.get("service")
+            if not svc or it["id"] in booked_service:
+                continue
+            due = date.fromisoformat(svc["next_due"])
+            days = (due - t).days
+            if days > DUE_SOON_DAYS:
+                continue
+            items["service"].append({"id": f"service-{it['id']}", "kind": "service", "item_id": it["id"], "property": p["name"],
+                                     "title": f"{short_label(it)} at {p['name']}: service {due_text(days)}",
+                                     "subtitle": " · ".join(x for x in (EVERY[svc["interval_months"]], it.get("room"), due.strftime("%b %-d")) if x),
+                                     "due": svc["next_due"], "overdue": days < 0, "action": "Mark done"})
+    items["service"].sort(key=lambda x: x["due"])
 
     for p in catalog:
         for a in p["amenities"]:
@@ -195,6 +222,6 @@ async def fixit(host: dict = Depends(current_host)):
                                "title": f"{names.get(s['contractor_id'], 'A contractor')}: {s['alert']}",
                                "subtitle": "Bench watch · sample data", "action": "Got it"})
 
-    ordered = items["waiting"] + items["outcomes"] + items["gaps"] + items["stale"] + items["watch"]
+    ordered = items["waiting"] + items["outcomes"] + items["service"] + items["gaps"] + items["stale"] + items["watch"]
     return {"items": ordered, "counts": {k: len(v) for k, v in items.items()},
             "setup": {"properties": len(catalog), "contractors": len(contractors)}}

@@ -12,6 +12,7 @@ import { getLastRental, setLastRental } from "@/src/lastRental";
 import { makeStyles, useTheme } from "@/src/theme";
 import { FixGuide } from "@/src/components/FixGuide";
 import { DirectoryCard } from "@/src/components/DirectoryCard";
+import { RentalAvatar } from "@/src/components/RentalArt";
 import { smsUrl } from "@/src/components/issue/RequestSheet";
 import { itemIcon, itemLabel } from "@/src/onboarding/shared";
 import { Badge, Btn, Card, Chip, ChipRow, ConfirmSheet, EmptyState, Field, H, Icon, Mascot, Notice, Sheet, Skeleton, T } from "@/src/ui";
@@ -159,7 +160,7 @@ function Summary({ d, props, trades, items, setD, remembered }: { d: any; props:
           </ChipRow>
           <T size={13} weight="semi">Property</T>
           <ChipRow testID="snap-property-select">
-            {props.map((p) => <Chip key={p.id} label={p.name} on={d.property_id === p.id} onPress={() => { setLastRental(p.id); setD(autoFill({ ...d, property_id: p.id, amenity_id: null, item_id: null }, props, remembered, items)); }} testID={`snap-property-option-${p.id}`} />)}
+            {props.map((p) => <Chip key={p.id} label={p.name} avatar={<RentalAvatar p={p} />} on={d.property_id === p.id} onPress={() => { setLastRental(p.id); setD(autoFill({ ...d, property_id: p.id, amenity_id: null, item_id: null }, props, remembered, items)); }} testID={`snap-property-option-${p.id}`} />)}
           </ChipRow>
           {pool.length > 0 && (
             <>

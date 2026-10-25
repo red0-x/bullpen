@@ -97,10 +97,10 @@ def build_demo(host_id: str, host_name: str, now: datetime) -> dict:
     rng = random.Random(42)
     base = {"host_id": host_id, "demo": True}
     props, amenities = [], []
-    for p in PROPERTIES:
+    for n, p in enumerate(PROPERTIES):
         pid = _id()
         props.append({**base, "id": pid, "name": p["name"], "city": p["city"], "address": p["address"],
-                      "created_at": now})
+                      "created_at": now + timedelta(milliseconds=n)})  # distinct, so the listed order is stable
         for kind, custom in p["amenities"]:
             label, trade = custom if custom else (AMENITY_LABELS[kind], AMENITY_TRADES[kind])
             amenities.append({**base, "id": _id(), "property_id": pid, "type": kind, "label": label,

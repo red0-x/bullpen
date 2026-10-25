@@ -143,3 +143,15 @@ frontend:
       - working: "NA"
         agent: "main"
         comment: "Iter8: test_iter7_features.py fixture now skips first setup (real flow) -> 13/13 pass with -n 0. complete() on an extra rental no longer marks first setup done. NEW: Snap + Bench remember the last rental used (src/lastRental.ts, storage key last_property). Bench shows rental chips (bench-rental-select, bench-rental-option-<id>, bench-rental-option-all) when host has 2+ rentals; opens on last used else first rental; focus param switches to the owning rental. Snap saves last rental on property chip pick and on Track."
+
+  - task: "Iter11: rental cover photos, appliance service reminders (Fix-it card + email), job costs, appliance history"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/maintenance_routes.py, /app/backend/emailer.py, /app/backend/outcome_routes.py, /app/frontend/app/appliance/[id].tsx, /app/frontend/app/appliances.tsx, /app/frontend/src/components/{RentalArt,CoverSheet,ServiceSheets}.tsx, /app/frontend/app/(tabs)/{index,properties,bench,snap}.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Backend tests/test_iter11_maintenance.py 7/7 pass (-n 0). Emergent managed email verified with delivered@resend.dev. Reminder emails skip example.com addresses on purpose."

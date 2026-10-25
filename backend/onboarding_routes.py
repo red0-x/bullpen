@@ -22,7 +22,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ai import AIError, _json, _run
-from server import DocBase, Property, current_host, db, now_utc, ser
+from server import DocBase, Property, current_host, db, now_utc, rental_position, ser
 
 router = APIRouter(prefix="/api")
 log = logging.getLogger("bullpen.onboarding")
@@ -479,6 +479,8 @@ async def state(host: dict, property_id: Optional[str] = None) -> dict:
         for r in rs:
             rooms.append(ser({**r, "items": [ser(i) for i in items if i["room_id"] == r["id"]]}))
     done = [r for r in rooms if r["status"] == "complete"]
+    if prop:  # house-drawing colour = the rental's position among the host's rentals (same as /properties)
+        prop = {**prop, "palette": await rental_position(host["id"], prop["id"])}
     # Rooms are optional: a confirmed address is enough to finish, rooms can be scanned later.
     return {"property": ser(prop) if prop else None, "rooms": rooms, "completed_rooms": len(done),
             "can_finish": bool(prop), "complete": bool(host.get("onboarding_complete")),

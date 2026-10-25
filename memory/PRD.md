@@ -83,3 +83,23 @@ See /app/memory/test_credentials.md
   - Bench ?focus= (from a Rentals amenity tile) switches to the owning rental once, then the param is cleared.
 - Polish: the no-photo diagnose message, an empty-amenities card on Bench, the address shown when a rental has no city, and chips that expose their selected state.
 - AR room scan (RoomPlan / munim-xr) can only be checked in a native build, not in Expo Go or the web preview.
+
+## 2026-06: Cover photos, service reminders, job costs, appliance history (iterations 11–12)
+- **Rental cover photos:**
+  - PUT /api/properties/{id}/cover takes {photo: /api/files/url or null}; the file must belong to the host.
+  - The Rentals card shows a banner (src/components/RentalArt.tsx). Rentals without a photo get a Bullpen house drawing in their own colour, picked by position (the server sends `palette`, using the stable RENTAL_ORDER).
+  - The "Add photo / Change" sheet offers camera, library and back-to-drawing (src/components/CoverSheet.tsx).
+  - Bench and Snap rental chips show a round avatar.
+- **Service reminders** (item.service = {interval_months 3|6|12, next_due, last_done, email, emailed_for}):
+  - PUT/DELETE /api/items/{id}/service; POST /items/{id}/service/done {done_on, cost, contractor_id, note}; DELETE /api/service-logs/{id} (newest manual log only).
+  - POST /items/{id}/service/book creates an issue with kind='service', with the trade guessed from the item name.
+  - Fix-it gets a kind='service' card 30 days before the due date or when overdue, with Mark done / Book a pro / History. The card is hidden while a service job is open.
+  - Email: Emergent managed email (emailer.py, EMAIL_FROM_NAME=Bullpen). One email per host, 7 days before each due date.
+    - An hourly loop (maintenance_routes.start_reminders) plus a check right after saving a reminder; the claim is atomic.
+    - Reserved domains such as example.com are skipped. Transient failures are retried; billing refusals are not.
+- **Job costs:** the outcome form has a cost field when "Showed up" is yes (JobOutcome.cost). A service job's showed-up outcome logs the service and moves next_due on; undoing it or changing it to a no-show reverts that.
+- **Appliance history:**
+  - GET /api/items/{id}/history returns repairs (status, contractor, rating, cost), services, total_cost and jobs.
+  - Screens: /appliance/[id] (stats, service card, timeline) and /appliances?pid= (a rental's appliances by room).
+  - Entry points: the Rentals "Appliances" button, the ItemSheet "Service reminders & history" button, the issue screen's appliance row, and the Fix-it History button.
+- **Maps:** the Google Geocoding API and Maps Static API are still not enabled on the user's key. The code uses them automatically once they are turned on (within 5 minutes).
