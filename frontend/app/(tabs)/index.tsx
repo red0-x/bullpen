@@ -78,8 +78,10 @@ export default function FixIt() {
         {!!err && <Notice testID="fixit-error">{err}</Notice>}
         {!data && !err && <Skeleton height={140} testID="fixit-loading" />}
         {data?.items.length === 0 && (data.setup.properties === 0 || data.setup.contractors === 0) && (
-          <EmptyState pose="glove" testID="fixit-setup-state" title="Let's build your bench" body="Add your rentals and the contractors you use. Bullpen will flag gaps and stale contacts here.">
-            <Btn label="Load demo or add properties" onPress={() => router.push("/(tabs)/properties")} testID="fixit-setup-properties-button" />
+          <EmptyState pose="glove" testID="fixit-setup-state" title="Let's build your bench"
+            body={data.setup.properties === 0 ? "Add your rentals and the contractors you use. Bullpen will flag gaps and stale contacts here." : "Your rental is set up. Now add the contractors you use, and Bullpen will flag gaps and stale contacts here."}>
+            <Btn label={data.setup.properties === 0 ? "Load demo or add properties" : "Add your contractors"}
+              onPress={() => router.push(data.setup.properties === 0 ? "/(tabs)/properties" : "/(tabs)/bench")} testID="fixit-setup-properties-button" />
             <Btn label="Import contacts" variant="secondary" onPress={() => router.push({ pathname: "/(tabs)/bench", params: { tab: "import" } })} testID="fixit-setup-import-button" />
           </EmptyState>
         )}

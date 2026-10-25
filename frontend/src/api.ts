@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { storage } from "@/src/utils/storage";
 
 export const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -95,5 +96,9 @@ export function errorText(err: any): string {
   return detail.msg || String(detail);
 }
 
-export const photoSource = (path?: string | null) =>
-  path ? { uri: `${BACKEND}${path}`, headers: token ? { Authorization: `Bearer ${token}` } : undefined } : null;
+// Web <img> tags can't send headers, so the web preview passes the token in the query instead.
+export const photoSource = (path?: string | null) => {
+  if (!path) return null;
+  if (Platform.OS === "web") return { uri: `${BACKEND}${path}${token ? `${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}` : ""}` };
+  return { uri: `${BACKEND}${path}`, headers: token ? { Authorization: `Bearer ${token}` } : undefined };
+};

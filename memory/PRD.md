@@ -27,6 +27,7 @@ A ranked backup bench of contractors for short-term rental hosts who manage 1–
 - P1: Voice assistant (Deepgram), which was not ported
 - P1: Move issue photos from Mongo base64 to object storage
 - P2: Property and amenity editing, maintenance schedules, real directory data per city
+- P2: More than one property through onboarding; link tagged items to maintenance tickets
 
 ## Test credentials
 See /app/memory/test_credentials.md
@@ -36,3 +37,17 @@ See /app/memory/test_credentials.md
 - Cards rise and fade into view as you scroll (Card in src/ui.tsx). Buttons got a gradient face, a lip, a spring press, haptics and an icon bubble. Chips scale down when pressed.
 - Spacing is roomier (20px). Fix-it has count tiles. The active tab gets a pill. The welcome page has a parallax mascot and a scrolling trade marquee.
 - Fixes: the issue screen now checks login, the toast clears on logout, Rentals counts gaps the same way as Fix-it, and the Properties page is renamed Rentals.
+
+## 2026-06 — Property onboarding with AR room scan
+- Gate: every account, including the demo, goes to /onboarding until setup is finished or skipped (users.onboarding_complete / onboarding_skipped). The server also returns 403 on app APIs until then.
+- Step 1, address (/onboarding): Google Geocoding runs through the backend proxy (/api/onboarding/geocode). You choose from the results, see a static map preview (/api/onboarding/staticmap, server-side key), and can add a nickname. "Skip setup for now" is available here.
+- Step 2, rooms (/onboarding/rooms): add one room or the basic 4 rooms in one tap, delete rooms, and "Skip rooms, scan later" (finishes with the address only).
+- Room capture (/onboarding/room/[id]):
+  - iOS on a LiDAR device uses RoomPlan (expo-roomplan) for a 3D scan; the JSON and USDZ files are uploaded and the detected appliances are suggested.
+  - Android, and iPhones without LiDAR, use munim-xr AR tagging: aim the reticle, tap a quick-tag chip, and the anchor and a snapshot are saved.
+  - Fallbacks: camera photos, uploads, or a walkthrough video (4 frames are extracted). AI suggestions come from the photo via /api/onboarding/suggest. Tap a photo to pin items on it.
+  - Item sheet: add or edit items with name, type, brand, model and notes.
+- Step 3, review (/onboarding/review): map, stats, every room's items (editable), then Finish, which shows a celebration and opens the app.
+- Rentals tab: a setup card links back to continue setup or manage rooms later.
+- Files and photos go to Emergent object storage (/api/upload, /api/files/...). On web, the token is passed as ?token= so images load.
+- AR only works in a native build. Web and Expo Go show the photo fallback.

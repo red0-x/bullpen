@@ -12,7 +12,8 @@
       "bundleIdentifier": "com.emergent.bullpenmirror.q3lzrl",
       "infoPlist": {
         "NSCameraUsageDescription": "Snap what broke so Bullpen finds who fixes it",
-        "NSPhotoLibraryUsageDescription": "Pick a photo of what broke at your rental"
+        "NSPhotoLibraryUsageDescription": "Pick a photo of what broke at your rental",
+        "NSMicrophoneUsageDescription": "Record room walkthrough videos with sound"
       }
     },
     "android": {
@@ -22,7 +23,8 @@
       },
       "package": "com.emergent.bullpenmirror.q3lzrl",
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -46,7 +48,23 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-status-bar",
-      "@react-native-vector-icons/lucide"
+      "@react-native-vector-icons/lucide",
+      "expo-roomplan",
+      [
+        "munim-xr",
+        {
+          "cameraPermission": "Scan rooms and tag appliances in AR",
+          "arRequired": false
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "17.0"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

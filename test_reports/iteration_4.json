@@ -1,0 +1,38 @@
+{
+  "summary": "Retest of the iteration 3 fixes plus a light regression. Backend: 26/26 pytest pass (14 existing + 12 new in test_onboarding_fixes.py). frame_point {x:null,y:null}, x:1.5, x:-0.1, a missing y, or a string x all return 422. Valid and edge (0,1) frame_points are saved and read back correctly. A position dict with numbers and strings (anchor_id) is accepted, and a list value returns 422. The gate leaves /api/auth/*, /api/onboarding, /api/onboarding/* and /api/files/* open, and /properties and /issues return 403 until setup is done. HIGH bug FIXED: in PhotoTagger on web, clicking 60%/40% of the visible image saved frame_point {x:0.6, y:0.399} (checked in the API). The pin rendered exactly at the click point at 390x844 (234,385 vs 234,385) and at 1024x768 (614.4,318.1 vs 614.4,318.3). Clicking the letterbox area or a pin label opens no sheet, and clicking a pin opens the existing item for editing. Upload uses the new ImageManipulator API: a 2000px JPEG was stored at 1280x767, an 800px JPEG was stored at 800 (not enlarged), and 6 AI suggestions appeared. A Playwright dblclick on suggestion-0-add created exactly 1 item (spinner shown). Two programmatic clicks in the same JS tick still created a duplicate (state-based guard). Rentals shows the 'No amenities yet' badge and the Fix-it empty state shows the 'Your rental is set up. Now add the contractors…' copy. Regression passed: new account -> seeded property -> confirm -> starter rooms -> room upload -> add all -> done -> review (4 rooms / 6 items / 3 appliances) -> finish -> celebrate -> tabs. Demo login redirects to /onboarding, and direct navigation to /properties also redirects there. The demo account was NOT skipped or completed (flags still unset). One transient Cloudflare 502 was caused by an expo restart during testing and recovered.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/onboarding/items/{id}", "issue": "ItemPatch has no frame_point/position fields, so the API silently ignores a frame_point sent in a PATCH (200, value unchanged). This is fine today, but repositioning a pin is impossible through PATCH if that is ever needed."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Room capture (390px)", "issues": ["The 'Take photo' button label is truncated to 'Take p…' in room-take-photo-button next to Upload"]},
+      {"screen": "Rentals", "issues": ["A property with no amenities shows the 'No amenities yet' badge AND the body text 'No amenities yet.', which is redundant. Consider body copy like 'Add amenities to track backups.'"]},
+      {"screen": "Fix-it empty state", "issues": ["The body now says 'Your rental is set up…' but the primary CTA still reads 'Load demo or add properties' (fixit-setup-properties-button). Consider 'Add contractors' when properties>0."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_onboarding.py", "/app/backend/tests/test_onboarding_fixes.py", "/app/test_reports/pytest/pytest_onboarding_iter4.xml"],
+  "action_items": [
+    "LOW: Make the suggestion add guard synchronous with a useRef (e.g. const addingRef = useRef(false); if (addingRef.current) return; addingRef.current = true; ... finally addingRef.current = false). The state-based `if (adding) return` can be bypassed by two clicks dispatched before React re-renders (reproduced with two programmatic clicks in one tick, which created a duplicate 'Microwave'). Normal dblclick is already blocked. Ref: /app/frontend/app/onboarding/room/[id].tsx:144-147. Apply the same guard to addAll.",
+    "LOW: The PhotoTagger web fallback uses nativeEvent.offsetX/offsetY, which are relative to the DOM element that was clicked. If the click lands on a child element (pin label, Animated wrapper), the offset is relative to that child. Today the coordinates fall outside 0..1 and are rejected, but on a photo that fills the canvas it could tag the top-left area. Safer: compute from pageX/pageY minus the canvas's measured page offset, or ignore taps unless e.target === e.currentTarget. Ref: /app/frontend/src/onboarding/PhotoTagger.tsx:34-36",
+    "LOW: The 'Take photo' label is truncated at 390px. Shorten it to 'Camera' or stack the buttons. Ref: room-take-photo-button",
+    "LOW: Copy polish: change the Fix-it CTA when properties>0, and drop the duplicate 'No amenities yet' body text on the Rentals card"
+  ],
+  "critical_code_review_comments": [
+    "uploadPhoto calls ctx.renderAsync(), then ctx.resize().renderAsync() on the same context. This works in testing (2000->1280), but the ImageRef/context SharedObjects are never released (consider ctx.release()/img.release() on native to avoid memory growth during multi-photo sessions).",
+    "Gate: ONBOARDING_OPEN prefixes now end with '/' plus an exact set {'/api/onboarding','/api/upload'}. This is correct, and /api/filesX and /api/onboardingX are not treated as open.",
+    "Backend FramePoint(ge=0, le=1) validation is correct and returns a clear 422."
+  ],
+  "updated_files": ["/app/backend/tests/test_onboarding_fixes.py (new)"],
+  "success_rate": {"backend": "100% (26/26)", "frontend": "100% of requested fixes verified (1 low-severity edge case in the double-tap guard)"},
+  "seed_data_creation": "Created test_ob_*/test_obui_* users with properties, rooms, items and files. All 16 users and their data were deleted from Mongo afterwards. The demo host was not modified: logged in only, gate redirect verified, onboarding flags still unset.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Seed via /tmp/ob/seed.py (register + POST /api/onboarding/property with body {name,address,geocode:GEO} + room). Note the 'geocode' key is a nested object. Test images: /tmp/ob/kitchen.jpg (800x479) and /tmp/ob/kitchen_big.jpg (2000px). To verify tagger pins, compute the contain-rect from the photo-tagger-canvas bounding box and the image ratio, click with page.mouse.click, then compare the photo-pin-* center. Expo may restart while you test (brief Cloudflare 502). Wait for login-email-input with a 60s timeout.",
+  "rca_of_issue": "Iteration 3 HIGH bug (NaN frame_point on web) is resolved. The offsetX/offsetY fallback plus the Number.isFinite guard produce correct normalized coordinates, and the backend FramePoint model rejects non-finite or out-of-range values. Remaining double-tap edge: React state updates from discrete events are flushed after the current task, so two click events dispatched in the same task both see adding=null. A useRef guard fixes this."
+}

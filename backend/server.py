@@ -59,6 +59,9 @@ class Property(DocBase):
     name: str
     city: str
     address: str
+    geocode: Optional[dict] = None  # {lat, lng, place_id, location_type, city, state, postal_code, country}
+    onboarding: bool = False  # created through the onboarding flow
+    onboarding_complete: bool = False
 
 
 class Amenity(DocBase):
@@ -197,11 +200,15 @@ def set_auth_cookies(resp: Response, uid: str):
                     secure=True, samesite="none", max_age=604800, path="/")
 
 
+ONBOARDING_OPEN = ("/api/auth/", "/api/onboarding/", "/api/files/")
+ONBOARDING_OPEN_EXACT = {"/api/onboarding", "/api/upload"}
+
+
 async def current_host(request: Request) -> dict:
-    token = request.cookies.get("access_token")
     auth = request.headers.get("Authorization", "")
-    if not token and auth.startswith("Bearer "):
-        token = auth[7:]
+    token = auth[7:] if auth.startswith("Bearer ") else None
+    # ?token= lets <img> tags on the web preview load protected photos (they can't send headers).
+    token = token or request.query_params.get("token") or request.cookies.get("access_token")
     if not token:
         raise HTTPException(401, "Not authenticated")
     try:
@@ -215,6 +222,11 @@ async def current_host(request: Request) -> dict:
     user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(401, "User not found")
+    # Gate: nothing else in the app works until onboarding is finished (or the host chose to skip it).
+    open_app = user.get("onboarding_complete") or user.get("onboarding_skipped")
+    path = request.url.path
+    if not open_app and path not in ONBOARDING_OPEN_EXACT and not path.startswith(ONBOARDING_OPEN):
+        raise HTTPException(403, "Finish setting up your property first.")
     return user
 
 
@@ -711,10 +723,12 @@ app.include_router(api)
 import bench_routes  # noqa: E402
 import outcome_routes  # noqa: E402
 import directory_routes  # noqa: E402
+import onboarding_routes  # noqa: E402
 
 app.include_router(bench_routes.router)
 app.include_router(outcome_routes.router)
 app.include_router(directory_routes.router)
+app.include_router(onboarding_routes.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in os.environ["FRONTEND_URL"].split(",")],
@@ -733,6 +747,15 @@ async def startup():
     for coll in DOMAIN:
         await db[coll].create_index([("host_id", 1), ("demo", 1)])
         await db[coll].create_index("id", unique=True)
+    for coll in ("rooms", "items"):
+        await db[coll].create_index("id", unique=True)
+        await db[coll].create_index([("host_id", 1), ("property_id", 1)])
+    await db.files.create_index([("path", 1), ("host_id", 1)])
+    try:
+        from onboarding_routes import init_storage
+        init_storage()
+    except Exception as e:  # storage is retried lazily on first upload
+        logger.warning("Storage init failed: %s", e)
     demo_email = os.environ["DEMO_HOST_EMAIL"].lower()
     demo_pw = os.environ["DEMO_HOST_PASSWORD"]
     existing = await db.users.find_one({"email": demo_email})

@@ -1,0 +1,45 @@
+{
+  "summary": "Property Onboarding + AR Room Scan feature tested end-to-end. Backend: 14/14 pytest tests pass (gate 403/open routes, state shape, geocode clean 503, staticmap 502/422, property create/update + street fallback + 400 without lat/lng, rooms CRUD with scan_data merge + cascade delete, items CRUD with blank->null + ownership 404s, upload/files via Bearer and ?token=, AI suggest on a real kitchen photo returned room_type=kitchen + 6 items). Frontend (390x844): demo login -> /onboarding gate, Find address shows 503 notice, Skip setup -> tabs, Rentals setup-card -> /onboarding; new account register -> seeded property prefill w/ map fallback -> rooms (starter 4, delete, add laundry -> room screen), room screen (AR-unavailable notice, upload JPEG, working state, photo strip, AI suggestions add/dismiss/add-all, photo tagger, manual item add/edit/delete, edit room type+label, Room done -> Done badge), review (stats, item edit via sheet, finish -> celebrate -> tabs), Rentals setup-card '<name> · 4 rooms · 6 tagged items' -> /onboarding/rooms, rooms-skip -> finishes with address only, direct URL nav while gated redirects to /onboarding, header logout works, Fix-it/Snap/Bench load. ONE real bug: photo-tagger frame_point is saved as {x:null,y:null} on web (pin rendered at wrong place). Deprecated API detected: expo-image-manipulator manipulateAsync.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/onboarding/rooms/{id}/items", "issue": "frame_point/position are untyped dicts; backend accepted frame_point {x:null,y:null} (from the web NaN bug). Validate as {x: float 0..1, y: float 0..1} and position {x,y,z: float}."},
+      {"endpoint": "GET /api/onboarding/staticmap", "issue": "App's 502 body is replaced by Cloudflare's HTML 502 page at the ingress (expected-ish; frontend falls back to drawn pin correctly). Consider 503 or 424 if a JSON detail is ever needed by clients."},
+      {"endpoint": "server.py current_host ONBOARDING_OPEN", "issue": "Uses startswith('/api/files') etc. without trailing slash, so any future route like /api/filesX or /api/uploads-* would bypass the gate. Use ('/api/auth/', '/api/onboarding', '/api/upload', '/api/files/') with exact-or-slash matching."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PhotoTagger", "issue": "On web, Pressable onPress nativeEvent has no locationX/locationY -> x,y = NaN; NaN fails neither `<0` nor `>1` checks so the item is saved with frame_point {x:null,y:null}. Pin then renders at the image's top-left corner (partly offscreen) instead of where the user tapped, and the photo badge still counts it as '1 tagged'. Verified in DB. Fix: const ne = e.nativeEvent; const lx = ne.locationX ?? ne.offsetX; const ly = ne.locationY ?? ne.offsetY; and guard with Number.isFinite(x) && Number.isFinite(y). Reference: /app/frontend/src/onboarding/PhotoTagger.tsx:31-36", "testID": "photo-tagger-canvas", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Room capture", "issues": ["AI suggested room_type 'kitchen' for a room typed 'laundry' but room-type-hint only appears when room.type === 'other' — consider showing the hint whenever AI type differs", "suggestion-N-add has no busy guard — rapid double tap can create duplicate items; addAll partial failure leaves already-added items in the suggestion list (duplicates on retry)"]},
+      {"screen": "Rentals / Fix-it after onboarding", "issues": ["Onboarding-created property with no amenities shows 'All covered' badge + 'No amenities yet' (contradictory)", "Fix-it empty state says 'Add your rentals...' even though the user just added a rental via onboarding"]}
+    ],
+    "react_native_issues": [
+      {"component": "expo-image-manipulator manipulateAsync", "issue": "manipulateAsync is @deprecated in expo-image-manipulator 58 (replaced by contextual API ImageManipulator.manipulate(uri).resize(...).renderAsync() then image.saveAsync({compress, format})). Also resize width:1280 upscales smaller photos. Reference: /app/frontend/src/onboarding/shared.ts:3,99"}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_onboarding.py", "/app/test_reports/pytest/pytest_onboarding.xml"],
+  "action_items": [
+    "HIGH: Fix PhotoTagger onTap coordinate extraction on web (use offsetX/offsetY fallback + Number.isFinite guard) — /app/frontend/src/onboarding/PhotoTagger.tsx:31-36",
+    "Validate frame_point (x,y floats 0..1) and position (x,y,z floats) with Pydantic models in ItemIn — /app/backend/onboarding_routes.py:151-160",
+    "Migrate uploadPhoto from deprecated manipulateAsync to ImageManipulator.manipulate(...).renderAsync()/saveAsync; avoid upscaling images narrower than 1280px — /app/frontend/src/onboarding/shared.ts:99",
+    "Optional: tighten ONBOARDING_OPEN prefix matching; add busy guard to suggestion add buttons; fix 'All covered' badge for property with zero amenities",
+    "Reset demo host onboarding flags (I tapped Skip setup on host@bullpup.example.com -> onboarding_skipped=true)"
+  ],
+  "critical_code_review_comments": [
+    "room/[id].tsx addFrames reads `room` from closure; two quick successive uploads can overwrite frames (second PATCH uses stale frames list). Use the latest room from patch result/functional state or server-side $push.",
+    "dropSuggestion filters by name — two suggestions with the same name are removed together.",
+    "Item delete in ItemSheet deletes immediately with no confirm (acceptable but easy to mis-tap).",
+    "room/[id].tsx is 359 lines, fine; no files >700 lines in the feature."
+  ],
+  "updated_files": ["/app/backend/tests/test_onboarding.py (new)"],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "~95% (all flows pass; photo-tagger pin coordinates broken on web)"},
+  "seed_data_creation": "Created test_ob_*/test_obui_*/test_obskip_* users with properties/rooms/items during testing; all deleted afterwards via Mongo cleanup. Demo host: onboarding_skipped set to true by the Skip flow test.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Geocode returns clean 503 (REQUEST_DENIED) and staticmap 502 (Cloudflare HTML) until the Google APIs are enabled — expected. Seed the property via POST /api/onboarding/property with a Bearer token from /api/auth/register. Real kitchen JPEG at /tmp/ob/kitchen.jpg (download from unsplash photo-1556911220-bff31c812dba if missing). Upload works with page.expect_file_chooser on room-upload-button. Review screen items need ~3s for entry animations before taps register (first tap during animation was ignored once). ConfirmSheet confirm testID = '<sheetTestID>-confirm-button'. Check frame_point in db.items after tagging to verify the PhotoTagger fix.",
+  "rca_of_issue": "PhotoTagger frame_point null: RN-web Pressable onPress delivers a click event whose nativeEvent is a DOM MouseEvent without locationX/locationY (RN-web only populates those on responder/touch events). (undefined - rect.x)/rect.w = NaN; NaN < 0 and NaN > 1 are both false so the guard passes; JSON.stringify(NaN) -> null, and the backend accepts the untyped dict. Repro: open room-photo-0, click anywhere on photo-tagger-canvas, save item -> db.items.frame_point == {x:None,y:None}; pin appears at top-left. Mitigation: fallback to offsetX/offsetY (or use onPressIn/onResponderRelease which carry locationX on web), Number.isFinite guard, and backend validation."
+}

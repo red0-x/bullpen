@@ -2,7 +2,7 @@ import { Redirect, Tabs } from "expo-router";
 import { NativeTabs } from "expo-router/native-tabs";
 import { Platform, View } from "react-native";
 import Lucide from "@react-native-vector-icons/lucide";
-import { useAuth } from "@/src/auth";
+import { needsOnboarding, useAuth } from "@/src/auth";
 import { usesNativeTabs } from "@/src/navigation";
 import { colors, fonts } from "@/src/theme";
 import { Mascot } from "@/src/ui";
@@ -20,6 +20,7 @@ export default function TabsLayout() {
   if (!user) {
     return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface }} testID="auth-loading"><Mascot pose="head" size={72} motion="breathe" /></View>;
   }
+  if (needsOnboarding(user)) return <Redirect href="/onboarding" />;
 
   if (usesNativeTabs) {
     return (

@@ -101,3 +101,30 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+user_problem_statement: "Bullpen mobile app. New feature: Property onboarding with AR room scan (address via Google Maps geocoding, room scan with RoomPlan iOS / munim-xr Android + photo/video fallback, tag appliances/fixtures, review screen, gate app until onboarding finished or skipped). User choices: every account incl. demo sees setup; whole setup can be skipped; room scan step can be skipped (address only)."
+
+backend:
+  - task: "Onboarding API (geocode, staticmap, property, rooms, items, suggest, complete, skip, gate)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/onboarding_routes.py, /app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Gate: app APIs return 403 until users.onboarding_complete or onboarding_skipped. complete now needs only an address. Google Geocoding + Maps Static APIs are NOT enabled on the user's Google project yet -> geocode returns 503 'Address lookup isn't switched on yet', staticmap 502 (frontend falls back to a drawn pin). Expected until user enables them."
+
+frontend:
+  - task: "Onboarding flow screens (/onboarding, /onboarding/rooms, /onboarding/room/[id], /onboarding/review) + gate + Rentals setup card"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/onboarding/*, /app/frontend/src/onboarding/*, /app/frontend/src/ar/*"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "AR (RoomPlan/munim-xr) only in native builds; web shows photo fallback notice."

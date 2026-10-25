@@ -66,23 +66,49 @@ function DemoControls({ status, onChange }: { status: any; onChange: () => void 
   );
 }
 
+function SetupCard({ ob }: { ob: any }) {
+  const router = useRouter();
+  const { colors } = useTheme();
+  const s = useStyles();
+  if (!ob || (ob.complete && !ob.property)) return null;
+  const items = (ob.rooms || []).reduce((n: number, r: any) => n + r.items.length, 0);
+  const pending = !ob.complete;
+  return (
+    <Card style={{ gap: 12, backgroundColor: pending ? colors.warningSoft : colors.surfaceSecondary }} testID="setup-card">
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View style={s.setupIcon}><Icon name={pending ? "scan-line" : "cuboid"} size={22} color={colors.brand} /></View>
+        <View style={{ flex: 1 }}>
+          <H size={20}>{pending ? "Finish setting up" : ob.property.name}</H>
+          <T size={14} muted>{pending
+            ? "Add your address and scan your rooms so Bullpen knows every appliance."
+            : `${ob.rooms.length} ${ob.rooms.length === 1 ? "room" : "rooms"} · ${items} tagged ${items === 1 ? "item" : "items"}`}</T>
+        </View>
+      </View>
+      <Btn label={pending ? "Continue setup" : ob.rooms.length ? "Rooms & appliances" : "Scan your rooms"} icon={pending ? "arrow-right" : "scan-line"}
+        variant={pending ? "primary" : "secondary"} onPress={() => router.push(ob.property ? "/onboarding/rooms" : "/onboarding")} testID="setup-card-button" />
+    </Card>
+  );
+}
+
 export default function Properties() {
   const { colors } = useTheme();
   const s = useStyles();
   const [props, setProps] = useState<any[] | null>(null);
   const [status, setStatus] = useState<any>(null);
+  const [ob, setOb] = useState<any>(null);
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
     try {
-      const [p, st] = await Promise.all([api("/properties"), api("/demo/status")]);
-      setProps(p); setStatus(st); setError("");
+      const [p, st, o] = await Promise.all([api("/properties"), api("/demo/status"), api("/onboarding").catch(() => null)]);
+      setProps(p); setStatus(st); setOb(o); setError("");
     } catch (e) { setError(errorText(e)); }
   }, []);
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
   return (
     <Screen eyebrow="Your properties" title="Rentals" sub="Every amenity and how many backups you have for it." onRefresh={refresh} testID="properties-list">
+        <SetupCard ob={ob} />
         <DemoControls status={status} onChange={refresh} />
         {!!error && (
           <View style={{ gap: 8 }} testID="properties-error">
@@ -105,9 +131,9 @@ export default function Properties() {
                     <Icon name="map-pin" size={13} color={colors.muted} /><T size={14} muted>{p.city}</T>
                   </View>
                 </View>
-                {gaps > 0 ? <Badge kind="warn" label={`${gaps} ${gaps === 1 ? "gap" : "gaps"}`} /> : <Badge kind="ready" label="All covered" />}
+                {p.amenities.length === 0 ? <Badge label="No amenities yet" /> : gaps > 0 ? <Badge kind="warn" label={`${gaps} ${gaps === 1 ? "gap" : "gaps"}`} /> : <Badge kind="ready" label="All covered" />}
               </View>
-              {p.amenities.length === 0 ? <T size={14} muted>No amenities yet.</T> : (
+              {p.amenities.length === 0 ? <T size={14} muted>Amenities you track show up here with their backups.</T> : (
                 <View style={s.grid}>
                   {p.amenities.map((a: any) => <View key={a.id} style={s.cell}><AmenityTile a={a} /></View>)}
                 </View>
@@ -125,4 +151,5 @@ const useStyles = makeStyles((c) => ({
   cell: { width: "50%", padding: 5 },
   tile: { minHeight: 116, borderRadius: 16, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surface, padding: 10, gap: 8 },
   tileIcon: { width: 34, height: 34, borderRadius: 8, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surfaceSecondary, alignItems: "center", justifyContent: "center" },
+  setupIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: c.surfaceSecondary, borderWidth: 1.5, borderColor: c.border, alignItems: "center", justifyContent: "center" },
 }));
