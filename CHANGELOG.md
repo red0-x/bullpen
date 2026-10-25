@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-25 — Photo-first fixing, SF contractor directory, voice agent
+### Added
+- "Something broke" is now photo-first. The screen has one big "Take a picture" button that opens the live camera, with "Upload a photo" and "Describe it instead" as backups. After the snap, everything fills itself in: what's wrong, how to fix it, the trade, the property, the amenity and the urgency. If the AI can't tell which property, it uses the one you used last, otherwise your first one. A small "Wrong? Change" link lets you fix it if needed.
+- A San Francisco contractor directory for the detected trade: 4 businesses per trade, ranked in code by reviews (weighted toward ones with more reviews), distance (your location if allowed, otherwise central San Francisco), reply speed and licensing. Each card opens up to show photos, 6 stats, reviews, Call, Text them, Map and Save to bench (with Undo). These are clearly labelled **sample listings (made-up businesses)**.
+- "Track this & see my bench" saves the issue and opens the issue page, asking "Add to it?" if there's already an open issue for that spot.
+- Voice agent: a "Talk to Bullpup" puppy button on every app screen. It listens through the browser's speech recognition, answers out loud, and can take you to the camera, Fix-it list, Bench, Properties or a specific issue. Typing works too, and there's a friendly message if the AI call fails.
+### Fixed
+- Uploading a photo before the page finished loading showed an error. The page now waits for your properties to load first.
+- When the AI isn't sure about a photo, it now says so instead of leaving "What's wrong" blank.
+- Unlicensed businesses can no longer outrank licensed ones as "Best match".
+
 ## 2026-10-25 — Fix: stuck on "Looks right, find help"
 ### Fixed
 - When the AI couldn't tell which property a photo was from, the confirm button stayed greyed out with no explanation. A "Where is it?" box now shows the matching spots at each property (for example Plumbing at Tahoe, Joshua Tree and Oakland). One tap picks the property and amenity together. "Show every amenity" reveals the rest, and a hint says what's still missing.

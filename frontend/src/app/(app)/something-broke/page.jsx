@@ -134,6 +134,7 @@ function SnapFlow() {
         return setStep("retry");
       }
       if (data.draft.is_rental_issue === false) setNotice("This doesn't look like part of your rental, but here's how to handle it and who could help.");
+      else if (!data.draft.can_tell) setNotice("We weren't fully sure from the photo, so this is our best guess. A closer photo helps.");
       setD(autoFill({ ...data.draft, diagnosis: data.draft.diagnosis || note }, props));
       setStep("results");
     } catch {
@@ -182,7 +183,8 @@ function SnapFlow() {
   if (props?.length === 0) {
     return <EmptyState pose="sniff" motion="sniff" testId="broke-no-properties" title="Add a property first" body="Bullpup needs your rentals to file the fix."><Link href="/properties/" className="btn btn-primary">Go to properties</Link></EmptyState>;
   }
-  if (step === "capture" || !props) return <Capture autoCamera={params.get("camera") === "1"} onPhoto={(p) => run(p, "")} onText={(t) => run(null, t)} />;
+  if (step === "capture" && !props) return <div className="card h-64 animate-pulse" data-testid="snap-loading" />;
+  if (step === "capture") return <Capture autoCamera={params.get("camera") === "1"} onPhoto={(p) => run(p, "")} onText={(t) => run(null, t)} />;
   if (step === "thinking") {
     return (
       <div className="card py-14 flex flex-col items-center text-center" data-testid="diagnose-thinking">
@@ -209,7 +211,7 @@ function SnapFlow() {
           {notice && <p className="rounded-[12px] bg-blush p-3 text-sm text-blush-ink font-semibold" data-testid="snap-notice">{notice}</p>}
           <div>
             <p className="text-sm font-semibold text-cocoa flex items-center gap-1"><Sparkles size={14} /> What&apos;s wrong</p>
-            <p className="mt-1 text-lg text-espresso" data-testid="snap-diagnosis">{d.diagnosis}</p>
+            <p className="mt-1 text-lg text-espresso" data-testid="snap-diagnosis">{d.diagnosis || `Looks like a ${d.trade.toLowerCase()} job. Add a closer photo for a sharper read.`}</p>
           </div>
           <Summary d={d} props={props} trades={trades} setD={setD} />
           <FixGuide steps={d.fix_steps || []} safety={d.safety_note} diy={d.diy} testId="snap-fix-guide" />

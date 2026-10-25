@@ -72,7 +72,7 @@ export function VoiceAgent() {
   return (
     <>
       {open && (
-        <div className="fixed z-40 bottom-24 right-3 sm:right-6 w-[calc(100%-1.5rem)] max-w-sm card flex flex-col max-h-[70vh]" data-testid="voice-panel">
+        <div className="fixed z-40 bottom-24 right-3 sm:right-6 w-[calc(100%-1.5rem)] max-w-sm card flex flex-col max-h-[55vh] sm:max-h-[70vh]" data-testid="voice-panel">
           <div className="flex items-center gap-2 p-3 border-b-[1.5px] border-line">
             <img src="/mascot/pup-head.webp" alt="" className="h-9 w-9 rounded-lg border-[1.5px] border-line" />
             <p className="font-head text-lg flex-1">Talk to Bullpup</p>

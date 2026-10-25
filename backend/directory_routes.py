@@ -79,7 +79,7 @@ def rank_directory(trade: str, origin) -> list:
         dist = miles(origin, (b["lat"], b["lng"]))
         bayes = (b["rating"] * b["review_count"] + 4.2 * 25) / (b["review_count"] + 25)
         score = round(max(0, min(100, (bayes - 3) / 2 * 100 - dist * 2 - (5 if b["avg_response_minutes"] > 90 else 0)
-                                     + (3 if b["licensed"] else -5))))
+                                     + (3 if b["licensed"] else -15))))
         reason = f"{b['rating']} stars from {b['review_count']} reviews · {dist:.1f} mi away"
         out.append({**b, "distance_miles": round(dist, 1), "score": score, "reason": reason})
     out.sort(key=lambda b: (-b["score"], b["distance_miles"]))
@@ -92,8 +92,8 @@ def rank_directory(trade: str, origin) -> list:
 async def directory(trade: str, lat: Optional[float] = None, lng: Optional[float] = None,
                     host: dict = Depends(current_host)):
     origin = (lat, lng) if lat is not None and lng is not None and miles(SF, (lat, lng)) < 60 else SF
-    return {"sample_data": True, "area": "San Francisco", "trade": trade,
-            "results": rank_directory(trade if trade in TRADES else "Plumbing", origin)}
+    used = trade if trade in TRADES else "Plumbing"
+    return {"sample_data": True, "area": "San Francisco", "trade": used, "results": rank_directory(used, origin)}
 
 
 class VoiceIn(BaseModel):
