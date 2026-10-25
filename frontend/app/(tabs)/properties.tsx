@@ -1,12 +1,10 @@
 import { useCallback, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, errorText } from "@/src/api";
-import { usesNativeTabs } from "@/src/navigation";
 import { toast } from "@/src/toast";
 import { makeStyles, useTheme } from "@/src/theme";
-import { ScreenHeader } from "@/src/components/ScreenHeader";
+import { Screen } from "@/src/components/Screen";
 import { AmenityIcon } from "@/src/components/AmenityIcon";
 import { Badge, Btn, Card, ConfirmSheet, EmptyState, H, Icon, Notice, Skeleton, T } from "@/src/ui";
 
@@ -27,7 +25,7 @@ function AmenityTile({ a }: { a: any }) {
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <View style={s.tileIcon}><AmenityIcon type={a.type} /></View>
         <View style={{ flex: 1 }}>
-          <T weight="semi" size={14} numberOfLines={1}>{a.label}</T>
+          <T weight="semi" size={14} numberOfLines={2}>{a.label}</T>
           <T size={12} muted numberOfLines={1}>{a.trade}</T>
         </View>
       </View>
@@ -69,13 +67,11 @@ function DemoControls({ status, onChange }: { status: any; onChange: () => void 
 }
 
 export default function Properties() {
-  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const s = useStyles();
   const [props, setProps] = useState<any[] | null>(null);
   const [status, setStatus] = useState<any>(null);
   const [error, setError] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -86,10 +82,7 @@ export default function Properties() {
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
   return (
-    <View style={s.root}>
-      <ScreenHeader eyebrow="Your rentals" title="Properties" sub="Every amenity and how many backups you have for it." />
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: (usesNativeTabs ? insets.bottom : 0) + 24, gap: 16 }} testID="properties-list"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await refresh(); setRefreshing(false); }} />}>
+    <Screen eyebrow="Your properties" title="Rentals" sub="Every amenity and how many backups you have for it." onRefresh={refresh} testID="properties-list">
         <DemoControls status={status} onChange={refresh} />
         {!!error && (
           <View style={{ gap: 8 }} testID="properties-error">
@@ -102,7 +95,7 @@ export default function Properties() {
           <EmptyState testID="properties-empty-state" title="No properties yet" body="Load the demo to see Bullpen with three sample rentals and a bench of made-up contractors." />
         )}
         {props?.map((p, i) => {
-          const gaps = p.amenities.filter((a: any) => a.active_count === 0).length;
+          const gaps = p.amenities.filter((a: any) => a.active_count < 2).length;
           return (
             <Card key={p.id} delay={i * 80} style={{ gap: 14 }} testID={`property-card-${p.id}`}>
               <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
@@ -122,8 +115,7 @@ export default function Properties() {
             </Card>
           );
         })}
-      </ScrollView>
-    </View>
+    </Screen>
   );
 }
 

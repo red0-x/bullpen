@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from "react";
 import { api, clearTokens, loadTokens, saveTokens, setLoggedOutHandler } from "@/src/api";
+import { toast } from "@/src/toast";
 
 type User = { id: string; name: string; email: string };
 type Ctx = {
@@ -39,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    toast.dismiss();
     await api("/auth/logout", { method: "POST" }).catch(() => {});
     await clearTokens();
     setUser(false);

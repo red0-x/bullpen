@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { View } from "react-native";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { useAuth } from "@/src/auth";
 import { Image } from "expo-image";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Screen } from "@/src/components/Screen";
 import { api, errorText, photoSource } from "@/src/api";
 import { URGENCY, fmtWhen } from "@/src/format";
 import { toast } from "@/src/toast";
@@ -19,7 +20,7 @@ const STATUS: Record<string, "warn" | "ready"> = { open: "warn", waiting: "warn"
 function IssueHeader({ data }: { data: any }) {
   const { colors } = useTheme();
   const s = useStyles();
-  const { issue, property, amenity } = data;
+  const { issue, property } = data;
   return (
     <Card style={{ gap: 12 }} testID="issue-header">
       {issue.photo_url ? (
@@ -32,7 +33,6 @@ function IssueHeader({ data }: { data: any }) {
         {issue.urgency && <Badge label={URGENCY[issue.urgency]} />}
         <Badge label={issue.trade_needed} />
       </View>
-      <H size={28}>{amenity?.label || issue.trade_needed} at {property.name}</H>
       <T muted testID="issue-diagnosis">{issue.ai_diagnosis || issue.host_note}</T>
       <View style={{ gap: 4 }}>
         <View style={s.row}><Icon name="map-pin" size={14} color={colors.muted} /><T size={14} muted style={{ flex: 1 }}>{property.address}</T></View>
@@ -78,11 +78,14 @@ function Candidates({ data, onRequest }: { data: any; onRequest: (c: any) => voi
 }
 
 export default function IssueScreen() {
+  const { user } = useAuth();
+  if (user === false) return <Redirect href="/welcome" />;
+  return <IssueView />;
+}
+
+function IssueView() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
-  const s = useStyles();
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState("");
   const [asking, setAsking] = useState<any>(null);
@@ -133,14 +136,8 @@ export default function IssueScreen() {
   const booked = data ? [...data.requests].reverse().find((r: any) => r.response === "booked") : null;
 
   return (
-    <View style={s.root}>
-      <View style={[s.top, { paddingTop: insets.top + 8 }]}>
-        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))} style={s.back} testID="issue-back-button" hitSlop={6}>
-          <Icon name="arrow-left" size={20} color={colors.brand} />
-        </Pressable>
-        <H size={20} style={{ flex: 1 }} numberOfLines={1}>{data ? `${data.amenity?.label || data.issue.trade_needed} issue` : "Issue"}</H>
-      </View>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, gap: 16 }} testID="issue-screen">
+    <>
+      <Screen back title={data ? `${data.amenity?.label || data.issue.trade_needed} at ${data.property.name}` : "Issue"} testID="issue-screen">
         {err ? (
           <EmptyState pose="sniff" motion="sniff" title="We couldn't find that issue" body={err} testID="issue-error">
             <Btn label="Back to Fix-it list" onPress={() => router.replace("/(tabs)")} />
@@ -157,9 +154,9 @@ export default function IssueScreen() {
             <OutcomeList outcomes={data.outcomes || []} onEdited={outcomeDone} />
           </>
         )}
-      </ScrollView>
+      </Screen>
       {data && <RequestSheet issue={data.issue} contractor={asking} onClose={() => setAsking(null)} onLogged={logged} />}
-    </View>
+    </>
   );
 }
 

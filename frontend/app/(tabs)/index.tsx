@@ -1,15 +1,12 @@
 import { useCallback, useState } from "react";
-import { RefreshControl, ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, errorText } from "@/src/api";
 import { URGENCY, fmtWhen } from "@/src/format";
 import { useContractorActions, Actions } from "@/src/contractorActions";
-import { usesNativeTabs } from "@/src/navigation";
 import { toast } from "@/src/toast";
-import { makeStyles } from "@/src/theme";
-import { ScreenHeader } from "@/src/components/ScreenHeader";
-import { Badge, Btn, Card, EmptyState, Notice, Skeleton, T } from "@/src/ui";
+import { Screen } from "@/src/components/Screen";
+import { Badge, Btn, Card, EmptyState, H, Notice, Skeleton, T } from "@/src/ui";
 
 const KIND: Record<string, ["warn" | "neutral", string]> = {
   issue: ["warn", "Waiting on a contractor"],
@@ -58,23 +55,26 @@ function ItemAction({ item, actions, reload }: { item: any; actions: Actions; re
 
 export default function FixIt() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const s = useStyles();
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(() => api("/fixit").then((d) => { setData(d); setErr(""); }).catch((e) => setErr(errorText(e))), []);
   const actions = useContractorActions(load);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const bottom = (usesNativeTabs ? insets.bottom : 0) + 24;
   return (
-    <View style={s.root}>
-      <ScreenHeader eyebrow="Home" title="Fix-it list" sub="What needs you today, in order." />
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottom, gap: 12 }} testID="fixit-list"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}>
-        <Btn label="Something broke" icon="siren" onPress={() => router.push("/(tabs)/snap")} testID="fixit-something-broke-button" />
+    <Screen eyebrow="Home" title="Fix-it list" sub="What needs you today, in order." onRefresh={load} testID="fixit-list">
+        <Btn big label="Something broke" icon="siren" onPress={() => router.push("/(tabs)/snap")} testID="fixit-something-broke-button" />
+        {data?.items.length > 0 && (
+          <View style={{ flexDirection: "row", gap: 10 }} testID="fixit-counts">
+            {[["waiting", "Waiting"], ["gaps", "Gaps"], ["stale", "Stale"]].map(([k, l]) => (
+              <Card key={k} style={{ flex: 1, padding: 14, gap: 0 }}>
+                <H size={28}>{data.counts[k] + (k === "waiting" ? data.counts.outcomes : 0)}</H>
+                <T size={13} muted>{l}</T>
+              </Card>
+            ))}
+          </View>
+        )}
         {!!err && <Notice testID="fixit-error">{err}</Notice>}
         {!data && !err && <Skeleton height={140} testID="fixit-loading" />}
         {data?.items.length === 0 && (data.setup.properties === 0 || data.setup.contractors === 0) && (
@@ -105,9 +105,6 @@ export default function FixIt() {
             <ItemAction item={i} actions={actions} reload={load} />
           </Card>
         ))}
-      </ScrollView>
-    </View>
+    </Screen>
   );
 }
-
-const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));

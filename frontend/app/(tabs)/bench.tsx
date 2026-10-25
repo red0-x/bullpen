@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { RefreshControl, ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, errorText } from "@/src/api";
 import { useContractorActions } from "@/src/contractorActions";
-import { usesNativeTabs } from "@/src/navigation";
 import { toast } from "@/src/toast";
 import { makeStyles, useTheme } from "@/src/theme";
-import { ScreenHeader } from "@/src/components/ScreenHeader";
+import { Screen } from "@/src/components/Screen";
 import { AmenityIcon } from "@/src/components/AmenityIcon";
 import { ContractorRow } from "@/src/components/bench/ContractorRow";
 import { AddContractorSheet } from "@/src/components/bench/AddContractorSheet";
@@ -20,13 +18,11 @@ const TABS = [["bench", "Ranked bench"], ["import", "Import contacts"], ["watch"
 export default function Bench() {
   const params = useLocalSearchParams<{ tab?: string; add?: string; trade?: string; city?: string; focus?: string }>();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const s = useStyles();
   const [tab, setTab] = useState<string>(params.tab || "bench");
   const [data, setData] = useState<any>(null);
   const [adding, setAdding] = useState<any>(null);
-  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(() => api("/bench").then(setData).catch((e) => toast.error(errorText(e))), []);
   const actions = useContractorActions(load);
@@ -43,15 +39,15 @@ export default function Bench() {
   }, [params.tab, params.add, params.trade, params.city, params.focus, router]);
 
   return (
-    <View style={s.root}>
-      <ScreenHeader eyebrow="Contractors" title="Bench" sub="Ranked backups for every property and amenity." />
-      <View style={s.tabs}>
-        <ChipRow testID="bench-tabs">
-          {TABS.map(([k, l]) => <Chip key={k} label={l} on={tab === k} onPress={() => setTab(k)} testID={`bench-tab-${k}`} />)}
-        </ChipRow>
-      </View>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: (usesNativeTabs ? insets.bottom : 0) + 24, gap: 16 }} keyboardShouldPersistTaps="handled" testID="bench-scroll"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}>
+    <>
+    <Screen eyebrow="Contractors" title="Bench" sub="Ranked backups for every property and amenity." onRefresh={load} testID="bench-scroll"
+      below={
+        <View style={s.tabs}>
+          <ChipRow testID="bench-tabs">
+            {TABS.map(([k, l]) => <Chip key={k} label={l} on={tab === k} onPress={() => setTab(k)} testID={`bench-tab-${k}`} />)}
+          </ChipRow>
+        </View>
+      }>
         {!data ? <Skeleton height={240} testID="bench-loading" /> : (
           <>
             {tab === "bench" && (
@@ -103,14 +99,14 @@ export default function Bench() {
             {tab === "watch" && <WatchPanel onChanged={load} />}
           </>
         )}
-      </ScrollView>
+    </Screen>
       {data && <AddContractorSheet open={!!adding} preset={adding} trades={data.trades} cities={data.cities} onClose={() => setAdding(null)} onSaved={load} />}
-    </View>
+    </>
   );
 }
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
-  tabs: { height: 56, justifyContent: "center", paddingHorizontal: 16, backgroundColor: c.surface, borderBottomWidth: 1.5, borderBottomColor: c.border },
+  tabs: { height: 56, justifyContent: "center", paddingHorizontal: 20, backgroundColor: c.surface },
   icon: { width: 36, height: 36, borderRadius: 8, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surface, alignItems: "center", justifyContent: "center" },
 }));

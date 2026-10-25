@@ -30,3 +30,9 @@ A ranked backup bench of contractors for short-term rental hosts who manage 1–
 
 ## Test credentials
 See /app/memory/test_credentials.md
+
+## 2026-10-25 — UI polish pass
+- Collapsing headers: the page title fades into the top bar on scroll, with a parallax title and a bottom edge that appears on scroll (src/components/Screen.tsx).
+- Cards rise and fade into view as you scroll (Card in src/ui.tsx). Buttons got a gradient face, a lip, a spring press, haptics and an icon bubble. Chips scale down when pressed.
+- Spacing is roomier (20px). Fix-it has count tiles. The active tab gets a pill. The welcome page has a parallax mascot and a scrolling trade marquee.
+- Fixes: the issue screen now checks login, the toast clears on logout, Rentals counts gaps the same way as Fix-it, and the Properties page is renamed Rentals.

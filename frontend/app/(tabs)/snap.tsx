@@ -1,17 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { Linking, ScrollView, View } from "react-native";
+import { Linking, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Screen } from "@/src/components/Screen";
 import { api, errorText } from "@/src/api";
 import { URGENCY } from "@/src/format";
-import { usesNativeTabs } from "@/src/navigation";
 import { toast } from "@/src/toast";
 import { storage } from "@/src/utils/storage";
 import { makeStyles, useTheme } from "@/src/theme";
-import { ScreenHeader } from "@/src/components/ScreenHeader";
 import { FixGuide } from "@/src/components/FixGuide";
 import { DirectoryCard } from "@/src/components/DirectoryCard";
 import { smsUrl } from "@/src/components/issue/RequestSheet";
@@ -128,7 +126,6 @@ function Summary({ d, props, trades, setD, remembered }: { d: any; props: any[];
 
 export default function Snap() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const s = useStyles();
   const [props, setProps] = useState<any[] | null>(null);
@@ -210,7 +207,6 @@ export default function Snap() {
     Linking.openURL(smsUrl(b.phone, msg)).catch(() => toast.error("Couldn't open Messages on this device."));
   };
 
-  const bottom = (usesNativeTabs ? insets.bottom : 0) + 24;
   let body;
   if (props?.length === 0) {
     body = (
@@ -271,12 +267,9 @@ export default function Snap() {
   }
 
   return (
-    <View style={s.root}>
-      <ScreenHeader eyebrow="Snap & go" title="Something broke" />
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottom, gap: 16 }} keyboardShouldPersistTaps="handled" testID="snap-screen">
+    <Screen eyebrow="Snap & go" title="Snap & fix" testID="snap-screen">
         {body}
-      </ScrollView>
-    </View>
+    </Screen>
   );
 }
 

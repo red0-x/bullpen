@@ -1,8 +1,10 @@
-import { ReactNode, useEffect } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleProp, Text, TextInput, TextInputProps, TextStyle, View, ViewStyle } from "react-native";
+import { ReactNode, useContext, useEffect } from "react";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextInput, TextInputProps, TextStyle, useWindowDimensions, View, ViewStyle } from "react-native";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import Lucide from "@react-native-vector-icons/lucide";
-import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, Easing } from "react-native-reanimated";
+import Animated, { Extrapolation, FadeInDown, interpolate, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withSpring, withTiming, Easing } from "react-native-reanimated";
+import { ScrollYContext } from "@/src/scroll";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import * as Haptics from "expo-haptics";
@@ -44,42 +46,85 @@ export function Btn({ label, onPress, variant = "primary", icon, disabled, busy,
       </Pressable>
     );
   }
+  return <PressBtn {...{ label, onPress, variant, icon, disabled, busy, testID, style, big, small }} />;
+}
+
+function PressBtn({ label, onPress, variant, icon, disabled, busy, testID, style, big, small }: BtnProps) {
+  const { colors } = useTheme();
+  const s = useBtnStyles();
+  const press = useSharedValue(0);
   const primary = variant === "primary";
   const fg = primary ? colors.onBrandPrimary : colors.onBrandSecondary;
   const off = disabled || busy;
+  const radiusV = big ? 24 : radius.btn;
+  const faceStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: press.value * 4 }, { scale: 1 - press.value * 0.015 }],
+  }));
+  const content = (
+    <>
+      {busy ? <ActivityIndicator color={fg} size="small" /> : icon ? (
+        <View style={[s.iconBubble, big && s.iconBubbleBig, { backgroundColor: primary ? colors.onBrandPrimarySoft : colors.surface }]}>
+          <Icon name={icon} size={big ? 22 : 16} color={fg} />
+        </View>
+      ) : null}
+      <Text numberOfLines={1} style={[s.label, big && { fontSize: 20 }, small && { fontSize: 14 }, { color: fg }]}>{label}</Text>
+    </>
+  );
   return (
     <Pressable testID={testID} disabled={off}
-      onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress?.(); }}
-      style={[{ opacity: off ? 0.6 : 1 }, style]}>
-      {({ pressed }) => (
-        <View>
-          <View style={[s.lip, { backgroundColor: primary ? colors.brandPrimaryLip : colors.border }]} />
-          <View style={[s.face, big && s.big, small && s.small, primary ? s.primary : s.secondary, { transform: [{ translateY: pressed && !off ? 4 : 0 }] }]}>
-            {busy ? <ActivityIndicator color={fg} size="small" /> : icon ? <Icon name={icon} size={big ? 24 : 18} color={fg} /> : null}
-            <Text numberOfLines={1} style={[s.label, big && { fontSize: 20 }, small && { fontSize: 14 }, { color: fg }]}>{label}</Text>
-          </View>
-        </View>
-      )}
+      onPressIn={() => { press.value = withSpring(1, { damping: 18, stiffness: 520 }); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); }}
+      onPressOut={() => { press.value = withSpring(0, { damping: 12, stiffness: 320 }); }}
+      onPress={onPress}
+      style={[{ opacity: off ? 0.55 : 1 }, style]}>
+      <View>
+        <View style={[s.lip, { borderRadius: radiusV, backgroundColor: primary ? colors.brandPrimaryLip : colors.border }]} />
+        <Animated.View style={[faceStyle, { borderRadius: radiusV, marginBottom: 4, overflow: "hidden" }, !primary && s.secondary]}>
+          {primary ? (
+            <LinearGradient colors={[colors.brandPrimaryHighlight, colors.brandPrimary]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
+              style={[s.face, big && s.big, small && s.small, s.sheen]}>
+              {content}
+            </LinearGradient>
+          ) : (
+            <View style={[s.face, big && s.big, small && s.small]}>{content}</View>
+          )}
+        </Animated.View>
+      </View>
     </Pressable>
   );
 }
 
 const useBtnStyles = makeStyles((c) => ({
   lip: { position: "absolute", left: 0, right: 0, top: 4, bottom: 0, borderRadius: radius.btn },
-  face: { minHeight: 48, marginBottom: 4, borderRadius: radius.btn, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  big: { minHeight: 72, borderRadius: 24, paddingHorizontal: 32 },
-  small: { minHeight: 44, paddingHorizontal: 12 },
-  primary: { backgroundColor: c.brandPrimary },
+  face: { minHeight: 52, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
+  big: { minHeight: 76, paddingHorizontal: 32 },
+  small: { minHeight: 44, paddingHorizontal: 12, gap: 6 },
+  sheen: { borderTopWidth: 1, borderTopColor: c.brandPrimarySheen },
   secondary: { backgroundColor: c.brandSecondary, borderWidth: 1.5, borderColor: c.border },
-  label: { fontFamily: fonts.semi, fontSize: 16 },
+  iconBubble: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  iconBubbleBig: { width: 40, height: 40, borderRadius: 20 },
+  label: { fontFamily: fonts.bold, fontSize: 16, letterSpacing: 0.1 },
   link: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start" },
   linkText: { fontFamily: fonts.semi, fontSize: 15, color: c.brand, textDecorationLine: "underline" },
 }));
 
 // ---------- Surfaces ----------
+// Cards rise and fade in as they scroll into view (when inside a <Screen>).
 export function Card({ children, style, testID, delay = 0 }: { children: ReactNode; style?: StyleProp<ViewStyle>; testID?: string; delay?: number }) {
   const s = useMiscStyles();
-  return <Animated.View entering={FadeInDown.delay(delay).duration(380)} testID={testID} style={[s.card, style]}>{children}</Animated.View>;
+  const scrollY = useContext(ScrollYContext);
+  const { height } = useWindowDimensions();
+  const y = useSharedValue(-1);
+  const reveal = useAnimatedStyle(() => {
+    if (!scrollY || y.value < 0) return {};
+    const p = interpolate(scrollY.value + height - 40 - y.value, [0, 160], [0, 1], Extrapolation.CLAMP);
+    return { opacity: 0.2 + 0.8 * p, transform: [{ translateY: (1 - p) * 36 }, { scale: 0.95 + 0.05 * p }] };
+  });
+  const flat = StyleSheet.flatten(style) || {};
+  return (
+    <Animated.View style={[reveal, { flex: flat.flex, alignSelf: flat.alignSelf, width: flat.width }]} onLayout={(e) => { y.value = e.nativeEvent.layout.y; }}>
+      <Animated.View entering={FadeInDown.delay(delay).duration(420).springify().damping(18)} testID={testID} style={[s.card, style]}>{children}</Animated.View>
+    </Animated.View>
+  );
 }
 
 export function Badge({ label, kind = "neutral", testID, icon }: { label: string; kind?: "ready" | "warn" | "neutral"; testID?: string; icon?: IconName }) {
@@ -106,10 +151,10 @@ export function Notice({ children, kind = "warn", testID }: { children: ReactNod
 export function Chip({ label, on, onPress, testID, warn }: { label: string; on?: boolean; onPress?: () => void; testID?: string; warn?: boolean }) {
   const { colors } = useTheme();
   return (
-    <Pressable testID={testID} onPress={onPress}
-      style={{ flexShrink: 0, height: 36, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.5, justifyContent: "center",
+    <Pressable testID={testID} onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress?.(); }}
+      style={({ pressed }) => ({ flexShrink: 0, height: 36, transform: [{ scale: pressed ? 0.95 : 1 }], paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.5, justifyContent: "center",
         backgroundColor: on ? colors.surfaceInverse : warn ? colors.warningSoft : colors.surfaceSecondary,
-        borderColor: on ? colors.surfaceInverse : warn ? colors.warningBorder : colors.border }}>
+        borderColor: on ? colors.surfaceInverse : warn ? colors.warningBorder : colors.border })}>
       <Text style={{ fontFamily: fonts.semi, fontSize: 14, color: on ? colors.onSurfaceInverse : warn ? colors.warning : colors.onSurface }}>{label}</Text>
     </Pressable>
   );
@@ -240,7 +285,10 @@ export function ConfirmSheet({ open, onClose, title, body, confirmLabel, onConfi
 }
 
 const useMiscStyles = makeStyles((c) => ({
-  card: { backgroundColor: c.surfaceSecondary, borderRadius: radius.card, borderWidth: 1.5, borderColor: c.border, padding: 16 },
+  card: {
+    backgroundColor: c.surfaceSecondary, borderRadius: radius.card, borderWidth: 1.5, borderColor: c.border, borderBottomWidth: 4, padding: 20,
+    shadowColor: c.shadow, shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 2,
+  },
   field: { minHeight: 48, borderRadius: radius.field, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surfaceSecondary, paddingHorizontal: 12, fontFamily: fonts.body, fontSize: 16, color: c.onSurface },
   overlay: { flex: 1, backgroundColor: c.overlay },
   sheet: { backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1.5, borderColor: c.border },

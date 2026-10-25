@@ -48,7 +48,11 @@ export default function TabsLayout() {
         <Tabs.Screen key={t.name} name={t.name} options={{
           title: t.label,
           tabBarButtonTestID: `tab-${t.name}`,
-          tabBarIcon: ({ color, size }) => <Lucide name={t.icon} size={size - 2} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <View style={{ width: 52, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: focused ? colors.warningSoft : "transparent" }}>
+              <Lucide name={t.icon} size={size - 4} color={color} />
+            </View>
+          ),
         }} />
       ))}
     </Tabs>

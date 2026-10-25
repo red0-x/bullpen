@@ -23,6 +23,10 @@ const light = {
   brandPrimary: "#7B3F25",
   onBrandPrimary: "#FFFFFF",
   brandPrimaryLip: "#5A2C18",
+  brandPrimaryHighlight: "#9A5434", // top of the button gradient
+  onBrandPrimarySoft: "rgba(255,255,255,0.16)", // icon bubble on primary buttons
+  brandPrimarySheen: "rgba(255,255,255,0.22)", // 1px top sheen on primary buttons
+  shadow: "#3A1F14",
   brandSecondary: "#FFFFFF",
   onBrandSecondary: "#7B3F25",
   brandTertiary: "#FBF4EA",
