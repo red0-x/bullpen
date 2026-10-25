@@ -18,7 +18,7 @@ AMENITY_LABELS = {
 TAHOE, JT, OAK = "South Lake Tahoe", "Joshua Tree", "Oakland"
 
 PROPERTIES = [
-    {"name": "Tahoe Cabin", "city": TAHOE, "address": "1 Pinecone Way, South Lake Tahoe, CA (sample)",
+    {"name": "Tahoe Cabin", "city": TAHOE, "address": "1442 Spruce Ave, South Lake Tahoe, CA 96150",
      "amenities": [("hot_tub", None), ("plumbing", None), ("kitchen_appliances", None), ("hvac", None),
                    ("cleaning", None)]},
     {"name": "Joshua Tree A-Frame", "city": JT, "address": "2 Yucca Mesa Rd, Joshua Tree, CA (sample)",
@@ -32,7 +32,7 @@ PROPERTIES = [
 CONTRACTORS = [
     ("Dave Ortiz", "Dave's Pools", ["Pool service"], [JT, "Yucca Valley"], "dave", {}),
     ("Rosa Lin", "Desert Blue Pool Co", ["Pool service"], [JT], (5, 1.0, 0.9, 4.6, 40), {}),
-    ("Kai Brennan", "Sierra Spa Service", ["Hot tub & spa"], [TAHOE], (6, 1.0, 0.85, 4.7, 30), {}),
+    ("Kai Brennan", "Sierra Spa Services", ["Hot tub & spa"], [TAHOE], (9, 1.0, 0.85, 4.7, 30), {}),
     ("Marta Reyes", "High Desert Hot Tubs", ["Hot tub & spa", "Plumbing"], [JT], (4, 1.0, 0.75, 4.4, 90), {}),
     ("Theo Banks", "Yucca Spa Care", ["Hot tub & spa", "Cleaning"], [JT], None, {}),
     ("Mike Duran", "Mike's Plumbing", ["Plumbing", "Appliance repair"], [OAK], (7, 1.0, 1.0, 4.8, 20), {}),
@@ -144,6 +144,18 @@ def build_demo(host_id: str, host_name: str, now: datetime) -> dict:
         if iss["id"] in open_ids[:-1]:
             iss["status"] = "resolved"
     signals = []
+    # The issue page demo: Tahoe hot tub heater out, guests arriving Sunday 4 PM (Pacific)
+    from zoneinfo import ZoneInfo
+    pt = now.astimezone(ZoneInfo("America/Los_Angeles"))
+    sun = (pt + timedelta(days=(6 - pt.weekday()) % 7 or 7)).replace(hour=16, minute=0, second=0, microsecond=0)
+    hot = next(a for a in amenities if a["property_id"] == props[0]["id"] and a["type"] == "hot_tub")
+    issues.append({**base, "id": _id(), "property_id": props[0]["id"], "amenity_id": hot["id"], "photo_url": None,
+                   "host_note": "Hot tub heater not firing. Tahoe Hot Tub Co bailed.",
+                   "ai_diagnosis": "The hot tub heater isn't firing. Often a tripped high-limit switch or a failed heater element.",
+                   "trade_needed": "Hot tub & spa", "urgency": "today", "guest_arrival": sun.astimezone(timezone.utc), "status": "open",
+                   "created_at": now - timedelta(minutes=3), "updated_at": now,
+                   "summary": {"headline": "Heater not firing.", "title": "Hot tub heater out", "phrase": "The hot tub heater is out"},
+                   "seed_events": [{"text": "You called. Tahoe Hot Tub Co bailed. Guests Sun 4 PM."}]})
     for i, c in enumerate(contractors):
         reading = {"response_time": str(20 + (i * 37) % 160), "public_rating": f"{4.3 + (i % 6) / 10:.1f}",
                    "business_open": "yes", "phone_working": "yes" if c["status"] == "active" else "no",

@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 14: first test of the Issue page dispatch flow, backend and frontend (web preview 390x844). Backend: 20 of 21 pytest cases pass (tests/test_iter14_dispatch.py). GET dispatch in the pick state returns <=3 picks plus current, message, timeline, eyebrow and headline. PATCH edits the message, rejects empty (422) and >600 chars (422), and returns 400 after sending. Send moves to waiting with call_at=+15m and next_at=+30m, a done event 'You replied YES. Texted X.' and a pending 'Call X if no reply.' test-reply yes moves to booked: booked_text 'tonight 7:30 PM', issue status scheduled, a good-dot event and a pending 'Text you tomorrow: how did it go?' event. no and silent move to next with the next pick and a correct prev. Sending again works. test-reply returns 400 when not waiting and 422 for an invalid reply. PUT /me/phone validation is correct (200/400/422). The Twilio webhook returns 403 without a signature. With a valid computed signature it handles host YES ('Texting High Sierra now.'), host how-it-went (outcome saved, issue resolved) and unknown numbers. Background tick was checked by back-dating Mongo fields: call_at passed -> called=True and 'No reply. Called...'; next_at passed -> next state; checkin_at passed -> 'Asked you: how did X do?'. One failing test: after the 3 shown picks all decline, the state is 'next' with a 4th hidden pick (Emerald Bay Spa Care), not 'empty'. Frontend: every requested testID renders and works. Pick layout works: #1 raised with BEST PICK, #2/#3 tilted behind, the Why #1? pill toggles why-1-text, the I'LL TEXT {SHORT} label is shown, and the message box is editable (the edit persisted and was sent). The waiting, trying-next, booked (with how-did-it-go form) and empty states all render. Empty state: notice, then Add a pro -> /bench?add=1. HostPhone save works and the form hides. No phone numbers appear in the page text, and there are no console errors. No deprecated Expo packages were found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "dispatch picks (ensure/advance)", "issue": "d['picks'] keeps every ranked pick (picks[:3]+picks[3:] does nothing), so after #1-#3 decline the flow moves to a 4th pick the host never saw ('Here are your 3 best', 'Picked Sierra Spa and 2 backups'). Tahoe hot tub: 4 ranked, 4 tried. Either cap at 3, or show the count and say it will try more."},
+      {"endpoint": "GET /api/issues/{id}", "issue": "The issue page also loads this payload, and it includes contractor phone numbers in bench/candidates/requests (e.g. '(415) 555-0102'). They are not shown on screen, but the brief says the host never sees contractor phones. Strip phone from this response, or stop calling it from the issue page."},
+      {"endpoint": "Timezones (dispatch_routes TZ)", "issue": "The backend hardcodes America/Los_Angeles for booked_text, parse_time and event text ('replied YES for 7:30 PM'). The frontend clock() and HowDidItGo use the device timezone. On the UTC web preview the booked page shows 'tonight 7:30 PM' while How did it go says 'booked for Mon, Oct 26, 2:30 AM', and the checkin row reads 4:30 PM. Use one timezone (the property's) on both sides."},
+      {"endpoint": "parse_time", "issue": "'YES 8' becomes 8 AM, while 1-7 are treated as PM. 'yes in 2 hours' parses as 2 PM."},
+      {"endpoint": "PUT /api/me/phone + /twilio/sms", "issue": "Phone numbers don't have to be unique across users, but inbound SMS uses find_one({phone}), so two hosts with the same number get texts routed unpredictably. Host YES by SMS always approves the newest pick/next issue, which is ambiguous when there are several."},
+      {"endpoint": "dispatch_routes.ensure draft()", "issue": "With no summary, the drafted message falls back to the generic 'The plumbing needs a fix' even when the headline is specific ('Toilet running nonstop.'). The eyebrow is likewise generic ('PLUMBING ISSUE')."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Booked -> How did it go", "issue": "HowDidItGo shows scheduled_for in device time ('Mon, Oct 26, 2:30 AM'), which disagrees with booked-detail 'tonight 7:30 PM'. It also shows right away, although the copy says 'I'll text you the day after'.", "affected_testIDs": ["booked-detail", "how-did-it-go"]}
+    ],
+    "design_issues": [
+      {"screen": "/issue/[id]", "issues": [
+        "The large Screen title 'Hot tub · Tahoe Cabin' (two lines, ~46px) sits above the eyebrow 'TAHOE CABIN · HOT TUB HEATER OUT', so the rental name appears twice and the cards are pushed below the fold. The wireframe has only eyebrow + headline.",
+        "The why-1-pill touch target is 104x36, below the 44pt minimum.",
+        "The back cards #2/#3 are mostly hidden behind #1 at 390px: only a partial name shows ('High Si...', '...pa Repair'). That is acceptable for the stacked look, but the tags are cut off."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter14_dispatch.py", "/app/test_reports/pytest/iter14_dispatch.xml"],
+  "action_items": [
+    "Decide on the 4th pick: cap dispatch picks at the 3 shown, or tell the host there are more backups. Currently a hidden 4th contractor gets texted.",
+    "Remove contractor phone fields from the GET /api/issues/{id} response used by the issue page (bench/candidates/requests).",
+    "Unify timezones: show times in the property's timezone in Timeline/HowDidItGo, or return preformatted times from the backend.",
+    "Make the why-1-pill at least 44px tall.",
+    "Consider dropping or shrinking the big Screen title on the issue page (rental name is duplicated with the eyebrow).",
+    "Optional: enforce unique host phone numbers. Improve parse_time for 8-11 without am/pm. Use host_note in the drafted message when there is no summary."
+  ],
+  "critical_code_review_comments": [
+    "ensure(): 'picks[:3] + picks[3:]' equals 'picks'. This looks like an unfinished cap.",
+    "tick(): the state is set to 'moving' and then advance() is called with a stale in-memory issue. It works, but if advance throws, the issue stays stuck in 'moving'.",
+    "The test-reply endpoint is open to any authenticated host in production. The user approved it, but consider gating it behind a flag.",
+    "The 'No reply. Called X, no answer.' event is written at call time, before the call result is known."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter14_dispatch.py"],
+  "success_rate": {"backend": "95% (20/21)", "frontend": "100% of requested flows render and work"},
+  "seed_data_creation": "Called POST /api/demo/reset for test_ui11 and for the demo host, so demo IDs changed. test_ui11 now: Tahoe hot tub issue 2298a4a8-d861-4dc1-bcfa-e1f2211fd9f0 is BOOKED (Lakeside Spa); Oakland plumbing issue e4a2128e-a0c7-4735-9787-285bc8b96acd is in pick state. The test_ui11 phone is set to +14155550199. The demo host phone is +14155550123, and its demo was reset again by pytest (Tahoe pick, Plumbing booked).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The test file resets demo data for host@bullpup.example.com at the start. Twilio sends to fake 555 numbers fail silently, which is expected. The tick runs every 20s: back-date dispatch.call_at, next_at or checkin_at in Mongo to test it. Webhook tests can sign requests with twilio RequestValidator(TWILIO_AUTH_TOKEN).compute_signature(f'{EXPO_PUBLIC_BACKEND_URL}/api/twilio/sms', form). The frontend env key is EXPO_PUBLIC_BACKEND_URL. The card back stack animates in, so wait about 1.5s before checking pick-card-2/3.",
+  "rca_of_issue": "4th pick: build_picks returns the bench plus up to 3 NEARBY pros. view() slices to 3, but d['picks'] stores everything and advance() goes on until current >= len(picks)."
+}

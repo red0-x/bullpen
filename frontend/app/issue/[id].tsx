@@ -1,92 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { TextInput, View } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@/src/auth";
-import { Image } from "expo-image";
 import { Screen } from "@/src/components/Screen";
-import { api, errorText, photoSource } from "@/src/api";
-import { URGENCY, fmtWhen } from "@/src/format";
+import { api, errorText } from "@/src/api";
 import { toast } from "@/src/toast";
 import { makeStyles, useTheme } from "@/src/theme";
-import { Badge, Btn, Card, EmptyState, H, Icon, Mascot, Notice, Skeleton, T } from "@/src/ui";
-import { FixGuide } from "@/src/components/FixGuide";
-import { CandidateCard } from "@/src/components/issue/CandidateCard";
-import { RequestSheet } from "@/src/components/issue/RequestSheet";
-import { WaitingPanel } from "@/src/components/issue/WaitingPanel";
+import { Btn, EmptyState, H, Icon, Notice, Skeleton, T } from "@/src/ui";
+import { NextCard, PickCards } from "@/src/components/dispatch/PickCards";
+import { Timeline, clock } from "@/src/components/dispatch/Timeline";
+import { TestReplies } from "@/src/components/dispatch/TestReplies";
+import { HostPhone } from "@/src/components/dispatch/HostPhone";
 import { HowDidItGo, OutcomeList, RankChanges } from "@/src/components/issue/Outcomes";
-import { itemIcon, itemLabel } from "@/src/onboarding/shared";
-
-const STATUS: Record<string, "warn" | "ready"> = { open: "warn", waiting: "warn", scheduled: "ready", resolved: "ready" };
-
-function IssueHeader({ data }: { data: any }) {
-  const router = useRouter();
-  const { colors } = useTheme();
-  const s = useStyles();
-  const { issue, property } = data;
-  return (
-    <Card style={{ gap: 12 }} testID="issue-header">
-      {issue.photo_url ? (
-        <Image source={photoSource(issue.photo_url)} style={s.photo} contentFit="cover" testID="issue-photo" />
-      ) : (
-        <View style={[s.photo, { alignItems: "center", justifyContent: "center" }]}><Mascot pose="wrench" size={130} /></View>
-      )}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Badge kind={STATUS[issue.status]} label={issue.status[0].toUpperCase() + issue.status.slice(1)} testID="issue-status" />
-        <T size={13} muted numberOfLines={1} style={{ flex: 1 }} testID="issue-meta">
-          {[issue.kind === "service" ? "Routine service" : null, issue.urgency && URGENCY[issue.urgency], issue.trade_needed].filter(Boolean).join(" · ")}
-        </T>
-      </View>
-      <T muted testID="issue-diagnosis">{issue.ai_diagnosis || issue.host_note}</T>
-      {data.item && (
-        <Pressable onPress={() => router.push(`/appliance/${data.item.id}`)} style={({ pressed }) => [s.appliance, pressed && { opacity: 0.75 }]} testID="issue-appliance">
-          <Icon name={itemIcon(data.item.name, data.item.category)} size={16} color={colors.brand} />
-          <T size={14} weight="semi" style={{ flex: 1 }} testID="issue-appliance-label">{itemLabel(data.item)}</T>
-          <T size={12} weight="semi" style={{ color: colors.brand }}>History</T>
-          <Icon name="chevron-right" size={16} color={colors.brand} />
-        </Pressable>
-      )}
-      <View style={{ gap: 4 }}>
-        <View style={s.row}><Icon name="map-pin" size={14} color={colors.muted} /><T size={14} muted style={{ flex: 1 }}>{property.address}</T></View>
-        {issue.guest_arrival && <View style={s.row}><Icon name="clock" size={14} color={colors.warning} /><T size={14} weight="semi" style={{ color: colors.warning }}>Guests arrive {fmtWhen(issue.guest_arrival)}</T></View>}
-        {issue.scheduled_for && <View style={s.row}><Icon name="calendar-check" size={14} color={colors.success} /><T size={14} weight="semi" style={{ color: colors.success }} testID="issue-scheduled-for">Booked for {fmtWhen(issue.scheduled_for)}</T></View>}
-      </View>
-      {issue.updates?.length > 0 && issue.updates.map((u: any, i: number) => <T key={i} size={14} muted>• {u.note || "Added a photo"}</T>)}
-      <FixGuide steps={issue.fix_steps || []} safety={issue.safety_note} diy={issue.diy} testID="issue-fix-guide" />
-    </Card>
-  );
-}
-
-function Candidates({ data, onRequest }: { data: any; onRequest: (c: any) => void }) {
-  const router = useRouter();
-  const [full, setFull] = useState(false);
-  const { candidates, active_total, issue, property, amenity } = data;
-  const what = (amenity?.label || issue.trade_needed).toLowerCase();
-  return (
-    <Card style={{ gap: 12 }} testID="candidates-section">
-      <H size={22}>{candidates.length ? `Top ${candidates.length} to call` : "Who to call"}</H>
-      {active_total === 0 ? (
-        <View style={{ gap: 8 }}>
-          <Notice testID="no-contractors-notice">You have no {what} contractors at {property.city}.</Notice>
-          <Btn label="Add one now" variant="secondary" onPress={() => router.push({ pathname: "/(tabs)/bench", params: { add: "1", trade: issue.trade_needed, city: property.city } })} testID="add-contractor-link" />
-        </View>
-      ) : candidates.length === 0 ? (
-        <Notice testID="all-asked-notice">You&apos;ve asked everyone on the bench for this. Add more contractors after it&apos;s fixed.</Notice>
-      ) : (
-        <>
-          {candidates.map((c: any, i: number) => <CandidateCard key={c.id} c={c} position={i + 1} onRequest={onRequest} />)}
-          {candidates.length < 3 && <Notice testID="few-backups-notice">Only {candidates.length} backup{candidates.length === 1 ? "" : "s"} for this. Add more after this is fixed.</Notice>}
-        </>
-      )}
-      <Btn variant="link" label={full ? "Hide full bench" : "See full bench"} onPress={() => setFull(!full)} testID="see-full-bench-button" />
-      {full && (
-        <View style={{ gap: 8 }} testID="full-bench">
-          {data.bench.length === 0 && <T size={14} muted>Nobody on the bench for this trade here yet.</T>}
-          {data.bench.map((c: any) => <CandidateCard key={c.id} c={c} position={c.rank} compact />)}
-        </View>
-      )}
-    </Card>
-  );
-}
 
 export default function IssueScreen() {
   const { user } = useAuth();
@@ -94,88 +19,138 @@ export default function IssueScreen() {
   return <IssueView />;
 }
 
+function Composer({ d, issueId, onSent }: { d: any; issueId: string; onSent: () => void }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const [msg, setMsg] = useState(d.message);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setMsg(d.message), [d.message]);
+  const send = async () => {
+    setBusy(true);
+    try {
+      if (msg.trim() !== d.message) await api(`/issues/${issueId}/dispatch`, { method: "PATCH", body: { message: msg.trim() } });
+      await api(`/issues/${issueId}/dispatch/send`, { method: "POST" });
+      onSent();
+    } catch (e) { toast.error(errorText(e)); } finally { setBusy(false); }
+  };
+  return (
+    <View style={{ gap: 8 }}>
+      <T size={12} weight="bold" muted style={{ letterSpacing: 1.2 }} testID="ill-text-label">I&apos;LL TEXT {d.current.short.toUpperCase()}</T>
+      <TextInput value={msg} onChangeText={setMsg} multiline style={s.msg} placeholderTextColor={colors.muted} testID="dispatch-message-input" />
+      <T size={12} muted>They never see your number. Replies come to me.</T>
+      <Btn big label="Send it" icon="send" busy={busy} disabled={!msg.trim()} onPress={send} testID="send-it-button" />
+    </View>
+  );
+}
+
 function IssueView() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { colors } = useTheme();
+  const [d, setD] = useState<any>(null);
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState("");
-  const [asking, setAsking] = useState<any>(null);
   const [changes, setChanges] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const d = await api(`/issues/${id}`);
-      setData(d);
-      return d;
-    } catch (e) {
-      setErr(errorText(e));
-    }
+      const [dd, full] = await Promise.all([api(`/issues/${id}/dispatch`), api(`/issues/${id}`)]);
+      setD(dd);
+      setData(full);
+    } catch (e) { setErr(errorText(e)); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (d?.state !== "waiting") return;
+    const t = setInterval(load, 15000);
+    return () => clearInterval(t);
+  }, [d?.state, load]);
 
-  const outcomeDone = async (res: any) => {
-    setChanges(res?.changes || []);
-    const fresh = await load();
-    if (res && !res.outcome.showed_up && fresh?.candidates?.[0]) setAsking(fresh.candidates[0]);
-  };
-
-  const logged = async (req: any, c: any) => {
-    setAsking(null);
-    await load();
-    toast.success(`Logged your request to ${c.business_name}. Status: Waiting.`, {
-      duration: 10000,
-      action: { label: "Undo", onPress: async () => { await api(`/requests/${req.id}`, { method: "DELETE" }).catch(() => {}); load(); } },
-    });
-  };
-
-  const respond = async (req: any, response: string, scheduled_for?: string) => {
-    try {
-      await api(`/requests/${req.id}/response`, { method: "POST", body: { response, scheduled_for: scheduled_for || null } });
-      const fresh = await load();
-      const undo = { label: "Undo", onPress: async () => { await api(`/requests/${req.id}/response/undo`, { method: "POST" }).catch(() => {}); load(); } };
-      if (response === "booked") toast.success("Booked. Status: Scheduled.", { action: undo, duration: 10000 });
-      else {
-        const next = fresh?.candidates?.[0];
-        const head = response === "declined" ? "Marked declined." : "Marked no answer.";
-        toast(next ? `${head} Here's the next backup.` : `${head} Nobody else is left on the bench for this.`, { action: undo, duration: 10000 });
-        if (next) setAsking(next);
-      }
-    } catch (e) { toast.error(errorText(e)); }
-  };
-
-  const showCandidates = data && data.issue.status !== "scheduled" && data.issue.status !== "resolved";
+  const outcomeDone = async (res: any) => { setChanges(res?.changes || []); await load(); };
   const booked = data ? [...data.requests].reverse().find((r: any) => r.response === "booked") : null;
 
   return (
-    <>
-      <Screen back title={data ? `${data.issue.kind === "service" && data.item ? `${data.item.brand ? `${data.item.brand} ${data.item.name.toLowerCase()}` : data.item.name} service` : data.amenity?.label || data.issue.trade_needed} at ${data.property.name}` : "Issue"} testID="issue-screen">
-        {err ? (
-          <EmptyState pose="sniff" motion="sniff" title="We couldn't find that issue" body={err} testID="issue-error">
-            <Btn label="Back to Fix-it list" onPress={() => router.replace("/(tabs)")} />
-          </EmptyState>
-        ) : !data ? (
-          <Skeleton height={300} testID="issue-loading" />
-        ) : (
-          <>
-            <IssueHeader data={data} />
-            <RankChanges changes={changes} />
-            {data.issue.status === "scheduled" && <HowDidItGo issue={data.issue} booked={booked} onDone={outcomeDone} />}
-            <WaitingPanel requests={data.requests} onRespond={respond} />
-            {showCandidates && <Candidates data={data} onRequest={setAsking} />}
-            <OutcomeList outcomes={data.outcomes || []} onEdited={outcomeDone} />
-          </>
-        )}
-      </Screen>
-      {data && <RequestSheet issue={data.issue} contractor={asking} onClose={() => setAsking(null)} onLogged={logged} />}
-    </>
+    <Screen back title={d ? d.chip : "Issue"} testID="issue-screen">
+      {err ? (
+        <EmptyState pose="sniff" motion="sniff" title="We couldn't find that issue" body={err} testID="issue-error">
+          <Btn label="Back to Fix-it list" onPress={() => router.replace("/(tabs)")} />
+        </EmptyState>
+      ) : !d || !data ? (
+        <Skeleton height={300} testID="issue-loading" />
+      ) : (
+        <View style={{ gap: 20 }} testID={`dispatch-${d.state}`}>
+          <View style={{ gap: 4 }}>
+            <T size={12} weight="bold" muted style={{ letterSpacing: 1.2 }} testID="dispatch-eyebrow">{d.eyebrow.toUpperCase()}</T>
+            <H size={26} testID="dispatch-headline">{d.headline}</H>
+          </View>
+
+          {d.state === "pick" && (
+            <>
+              <PickCards picks={d.picks} />
+              <Composer d={d} issueId={id} onSent={load} />
+            </>
+          )}
+
+          {d.state === "next" && d.current && (
+            <>
+              <View style={{ gap: 4 }}>
+                <H size={22} testID="trying-next-title">Trying next</H>
+                <T muted>{d.prev} didn&apos;t answer, so I picked {d.current.name}.</T>
+              </View>
+              <NextCard pick={d.current} />
+              <Composer d={d} issueId={id} onSent={load} />
+              <Timeline events={d.timeline} />
+            </>
+          )}
+
+          {d.state === "waiting" && d.current && (
+            <>
+              <View style={{ gap: 4 }}>
+                <H size={24} testID="waiting-title">Waiting on {d.current.short}</H>
+                <T muted testID="waiting-sub">
+                  Texted at {clock(d.sent_at)}. {d.called ? "Called too." : `I'll call at ${clock(d.call_at)}.`} If no reply by {clock(d.next_at)}, I&apos;ll try the next one.
+                </T>
+              </View>
+              <Timeline events={d.timeline} />
+              <TestReplies issueId={id} who={d.current.short} onDone={load} />
+            </>
+          )}
+
+          {d.state === "booked" && (
+            <>
+              <View style={{ gap: 6, alignItems: "flex-start" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Icon name="calendar-check" size={26} color={colors.success} />
+                  <H size={28} testID="booked-title">Booked</H>
+                </View>
+                <T size={17} weight="semi" testID="booked-detail">{d.current?.name || d.picks[0]?.name}, {d.booked_text}</T>
+                <T muted>I&apos;ll text you the day after to ask how it went.</T>
+              </View>
+              <Timeline events={d.timeline} />
+              <RankChanges changes={changes} />
+              {data.issue.status === "scheduled" && <HowDidItGo issue={data.issue} booked={booked} onDone={outcomeDone} />}
+            </>
+          )}
+
+          {d.state === "empty" && (
+            <View style={{ gap: 8 }}>
+              <Notice testID="no-contractors-notice">Nobody left to try for this at {data.property.name}.</Notice>
+              <Btn label="Add a pro" variant="secondary" onPress={() => router.push({ pathname: "/(tabs)/bench", params: { add: "1", trade: data.issue.trade_needed, city: data.property.city } })} testID="add-contractor-link" />
+              <Timeline events={d.timeline} />
+            </View>
+          )}
+
+          {!d.host_phone_set && d.state !== "booked" && <HostPhone onSaved={load} />}
+          <OutcomeList outcomes={data.outcomes || []} onEdited={outcomeDone} />
+        </View>
+      )}
+    </Screen>
   );
 }
 
 const useStyles = makeStyles((c) => ({
-  root: { flex: 1, backgroundColor: c.surface },
-  top: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1.5, borderBottomColor: c.border, backgroundColor: c.surface },
-  back: { width: 44, height: 44, borderRadius: 14, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surfaceSecondary, alignItems: "center", justifyContent: "center" },
-  photo: { width: "100%", height: 220, borderRadius: 16, backgroundColor: c.surface },
-  row: { flexDirection: "row", alignItems: "center", gap: 6 },
-  appliance: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: c.warningSoft },
+  msg: {
+    minHeight: 110, borderRadius: 16, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surfaceSecondary,
+    padding: 14, fontSize: 15, lineHeight: 21, color: c.onSurface, fontFamily: "Body", textAlignVertical: "top",
+  },
 }));

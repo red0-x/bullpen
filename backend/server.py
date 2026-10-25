@@ -105,6 +105,9 @@ class Issue(DocBase):
     status: Literal["open", "waiting", "scheduled", "resolved"] = "open"
     scheduled_for: Optional[datetime] = None
     updates: List[dict] = []
+    summary: Optional[dict] = None  # {headline, title, phrase} for the issue page
+    seed_events: List[dict] = []
+    dispatch: Optional[dict] = None  # issue page state (dispatch_routes)
     updated_at: datetime = Field(default_factory=now_utc)
 
 
@@ -786,8 +789,10 @@ import outcome_routes  # noqa: E402
 import directory_routes  # noqa: E402
 import onboarding_routes  # noqa: E402
 import maintenance_routes  # noqa: E402
+import dispatch_routes  # noqa: E402
 
 app.include_router(bench_routes.router)
+app.include_router(dispatch_routes.router)
 app.include_router(maintenance_routes.router)
 app.include_router(outcome_routes.router)
 app.include_router(directory_routes.router)
@@ -817,6 +822,7 @@ async def startup():
     await db.service_logs.create_index([("host_id", 1), ("item_id", 1)])
     await db.items.create_index("service.next_due", sparse=True)
     maintenance_routes.start_reminders()
+    dispatch_routes.start()
     try:
         from onboarding_routes import init_storage
         init_storage()
