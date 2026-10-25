@@ -10,29 +10,24 @@ import { useCoverPicker } from "@/src/components/CoverSheet";
 import { RentalCover } from "@/src/components/RentalArt";
 import { Badge, Btn, Card, ConfirmSheet, EmptyState, H, Icon, Notice, Skeleton, T } from "@/src/ui";
 
-function CoverageBadge({ count, testID }: { count: number; testID: string }) {
-  if (count === 0) return <Badge kind="warn" label="No contractors" testID={testID} />;
-  if (count === 1) return <Badge label="1 contractor" testID={testID} />;
-  return <Badge kind="ready" label={`Ready · ${count}`} testID={testID} />;
+function Coverage({ count, testID }: { count: number; testID: string }) {
+  const { colors } = useTheme();
+  const text = count === 0 ? "No contractors" : count === 1 ? "1 contractor" : `${count} contractors`;
+  return <T size={12} weight="semi" style={{ color: count === 0 ? colors.warning : colors.muted }} testID={testID}>{text}</T>;
 }
 
 function AmenityTile({ a }: { a: any }) {
   const router = useRouter();
   const s = useStyles();
-  const top = a.top?.[0];
   const tid = `amenity-tile-${a.id}`;
   return (
     <Pressable style={({ pressed }) => [s.tile, pressed && { opacity: 0.75 }]} testID={tid}
       onPress={() => router.push({ pathname: "/(tabs)/bench", params: { focus: a.id } })}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <View style={s.tileIcon}><AmenityIcon type={a.type} /></View>
-        <View style={{ flex: 1 }}>
-          <T weight="semi" size={14} numberOfLines={2}>{a.label}</T>
-          <T size={12} muted numberOfLines={1}>{a.trade}</T>
-        </View>
+        <T weight="semi" size={14} numberOfLines={2} style={{ flex: 1 }}>{a.label}</T>
       </View>
-      <CoverageBadge count={a.active_count} testID={`${tid}-badge`} />
-      {top && <T size={12} muted numberOfLines={2} testID={`${tid}-top`}><T size={12} weight="semi">#1 {top.business_name}</T> · {top.score}</T>}
+      <Coverage count={a.active_count} testID={`${tid}-badge`} />
     </Pressable>
   );
 }
@@ -102,7 +97,7 @@ function RoomsFooter({ p }: { p: any }) {
         </T>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <Btn small variant="secondary" icon="scan-line" label={p.rooms_count ? "Rooms" : "Scan rooms"} style={{ flex: 1 }}
+        <Btn small variant={p.rooms_count ? "secondary" : "primary"} icon="scan-line" label="Scan rooms" style={{ flex: 1 }}
           onPress={() => router.push(`/onboarding/rooms?pid=${p.id}`)} testID={`${tid}-rooms-button`} />
         {p.items_count > 0 && (
           <Btn small variant="secondary" icon="plug-zap" label="Appliances" style={{ flex: 1 }} onPress={() => router.push(`/appliances?pid=${p.id}`)} testID={`${tid}-appliances-button`} />
@@ -187,7 +182,7 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -5 },
   cell: { width: "50%", padding: 5 },
-  tile: { minHeight: 116, borderRadius: 16, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surface, padding: 10, gap: 8 },
+  tile: { minHeight: 84, borderRadius: 16, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surface, padding: 10, gap: 8 },
   tileIcon: { width: 34, height: 34, borderRadius: 8, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surfaceSecondary, alignItems: "center", justifyContent: "center" },
   setupIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: c.surfaceSecondary, borderWidth: 1.5, borderColor: c.border, alignItems: "center", justifyContent: "center" },
   foot: { gap: 10, paddingTop: 12, borderTopWidth: 1.5, borderTopColor: c.border },

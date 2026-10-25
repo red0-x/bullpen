@@ -13,7 +13,7 @@ import { ItemDraft, Room, roomMeta, roomTitle, useOnboarding } from "@/src/onboa
 import { Steps } from "@/src/onboarding/Steps";
 import { toast } from "@/src/toast";
 import { makeStyles, useTheme } from "@/src/theme";
-import { Badge, Btn, Card, H, Icon, Mascot, Notice, Skeleton, T } from "@/src/ui";
+import { Btn, Card, H, Icon, Mascot, Notice, Skeleton, T } from "@/src/ui";
 
 export default function ReviewStep() {
   const router = useRouter();
@@ -50,7 +50,7 @@ export default function ReviewStep() {
   };
 
   return (
-    <Screen back eyebrow={`${first ? "Set up" : p?.name || "Rental"} · Step 3 of 3`} title="Look it over" sub="Fix anything that's off. You can add more any time." onRefresh={load} testID="onboarding-review">
+    <Screen back eyebrow={`${first ? "Set up" : p?.name || "Rental"} · Step 3 of 3`} title="Finish up" sub="Fix anything that's off. You can add more any time." onRefresh={load} testID="onboarding-review">
       <Steps step={2} />
       {!!error && <Notice testID="review-error">{error}</Notice>}
       {!state && !error && <Skeleton height={240} testID="review-loading" />}
@@ -61,7 +61,7 @@ export default function ReviewStep() {
             <View style={{ flex: 1 }}>
               <H size={22} testID="review-property-name">{p.name}</H>
               <T size={14} muted>{p.address}</T>
-              {p.geocode?.verified === false && <Badge icon="map-pin" label="No map pin yet" testID="review-unverified-badge" />}
+              {p.geocode?.verified === false && <T size={13} muted testID="review-unverified-badge">No map pin yet</T>}
             </View>
             <Btn variant="link" label="Edit" onPress={() => router.push(`/onboarding?pid=${p.id}`)} testID="review-edit-address-button" />
           </View>
@@ -82,9 +82,8 @@ export default function ReviewStep() {
         return (
           <Card key={r.id} delay={i * 70} style={{ gap: 4 }} testID={`review-room-${r.id}`}>
             <Pressable onPress={() => router.push(`/onboarding/room/${r.id}`)} style={({ pressed }) => [s.roomHead, pressed && { opacity: 0.75 }]} testID={`review-room-${r.id}-open`}>
-              <View style={s.roomIcon}><Icon name={roomMeta(r.type).icon} size={18} color={colors.brand} /></View>
+              <View style={[s.roomIcon, doneRoom && { backgroundColor: colors.successSoft }]}><Icon name={doneRoom ? "check" : roomMeta(r.type).icon} size={18} color={doneRoom ? colors.success : colors.brand} /></View>
               <H size={20} style={{ flex: 1 }} numberOfLines={1}>{roomTitle(r)}</H>
-              <Badge kind={doneRoom ? "ready" : "warn"} label={doneRoom ? "Done" : "To scan"} />
               <Icon name="chevron-right" size={18} color={colors.muted} />
             </Pressable>
             {r.items.length

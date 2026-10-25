@@ -119,10 +119,9 @@ export function OutcomeList({ outcomes, onEdited }: { outcomes: any[]; onEdited:
             <T weight="semi" numberOfLines={1} style={{ flex: 1 }}>{o.business_name}</T>
             <Btn label="Edit" icon="pencil" variant="secondary" small onPress={() => setEditing(editing === o.id ? null : o.id)} testID={`outcome-edit-${o.id}`} />
           </View>
-          <View style={{ flexDirection: "row", gap: 6 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Badge kind={o.showed_up ? "ready" : "warn"} label={o.showed_up ? (o.on_time ? "On time" : "Late") : "No-show"} />
-            <Badge label={`${o.rating} stars`} />
-            {o.cost != null && <Badge label={money(o.cost)} testID={`outcome-${o.id}-cost`} />}
+            <T size={13} muted testID={`outcome-${o.id}-cost`}>{[`${o.rating} stars`, o.cost != null ? money(o.cost) : null].filter(Boolean).join(" · ")}</T>
           </View>
           {!!o.note && <T size={14} muted>{o.note}</T>}
           {editing === o.id && (

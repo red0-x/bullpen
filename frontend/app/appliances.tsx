@@ -38,11 +38,9 @@ function AppliancesView() {
         </View>
       )}
       {state && all.length > 0 && (
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }} testID="appliances-summary">
-          <Badge icon="box" label={`${all.length} tagged`} />
-          <Badge icon="bell-ring" label={`${all.filter((i) => i.service).length} with reminders`} />
-          {due > 0 && <Badge kind="warn" icon="alarm-clock" label={`${due} due soon`} />}
-        </View>
+        <T size={14} muted testID="appliances-summary">
+          {[`${all.length} tagged`, `${all.filter((i) => i.service).length} with reminders`, due > 0 ? `${due} due soon` : null].filter(Boolean).join(" · ")}
+        </T>
       )}
       {state && all.length === 0 && (
         <EmptyState pose="sniff" motion="sniff" title="Nothing tagged yet" body="Scan a room and tag its appliances. Each one gets its own service reminders and repair history." testID="appliances-empty">
@@ -63,7 +61,7 @@ function AppliancesView() {
                   <T weight="semi" numberOfLines={1}>{it.name}</T>
                   <T size={13} muted numberOfLines={1}>{[it.brand, it.model].filter(Boolean).join(" · ") || "No brand yet"}</T>
                 </View>
-                {b ? <Badge kind={b.kind} label={b.label} testID={`appliances-item-${it.id}-badge`} /> : <T size={12} muted>No reminder</T>}
+                {b?.kind === "warn" ? <Badge kind="warn" label={b.label} testID={`appliances-item-${it.id}-badge`} /> : <T size={12} muted testID={`appliances-item-${it.id}-badge`}>{b ? b.label : "No reminder"}</T>}
                 <Icon name="chevron-right" size={16} color={colors.muted} />
               </Pressable>
             );

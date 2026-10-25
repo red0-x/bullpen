@@ -3,12 +3,13 @@ import { Pressable, View } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { api, errorText } from "@/src/api";
 import { useAuth } from "@/src/auth";
+import { ScanIntro, useArSupport } from "@/src/ar/ScanAvailability";
 import { Screen } from "@/src/components/Screen";
-import { itemIcon, Room, ROOM_TYPES, roomMeta, roomTitle, useOnboarding } from "@/src/onboarding/shared";
+import { Room, ROOM_TYPES, roomMeta, roomTitle, useOnboarding } from "@/src/onboarding/shared";
 import { Steps } from "@/src/onboarding/Steps";
 import { toast } from "@/src/toast";
 import { makeStyles, useTheme } from "@/src/theme";
-import { Badge, Btn, Card, ConfirmSheet, EmptyState, Field, H, Icon, Notice, Sheet, Skeleton, T } from "@/src/ui";
+import { Btn, Card, ConfirmSheet, EmptyState, Field, H, Icon, Notice, Sheet, Skeleton, T } from "@/src/ui";
 
 const STARTER = ["kitchen", "living room", "bedroom", "bathroom"];
 
@@ -25,6 +26,8 @@ export default function RoomsStep() {
   const [busy, setBusy] = useState<"" | "add" | "starter" | "delete" | "later">("");
   const [del, setDel] = useState<Room | null>(null);
   const [laterOpen, setLaterOpen] = useState(false);
+  const { support, ready } = useArSupport();
+  const openRoom = (id: string, scan = false) => router.push(`/onboarding/room/${id}${scan ? "?scan=1" : ""}`);
 
   if (state && !state.property) return <Redirect href="/onboarding" />;
 
@@ -34,7 +37,7 @@ export default function RoomsStep() {
       const r = await api<Room>("/onboarding/rooms", { method: "POST", body: { type, label: label.trim(), property_id: state?.property?.id } });
       setAdding(false);
       setLabel("");
-      router.push(`/onboarding/room/${r.id}`);
+      openRoom(r.id, ready);
     } catch (e) { toast.error(errorText(e)); } finally { setBusy(""); }
   };
 
@@ -43,7 +46,7 @@ export default function RoomsStep() {
     try {
       for (const t of STARTER) await api("/onboarding/rooms", { method: "POST", body: { type: t, label: "", property_id: state?.property?.id } });
       await load();
-      toast.success("Added 4 rooms. Tap one to scan it.");
+      toast.success(ready ? "Added 4 rooms. Tap Scan in 3D on one to start." : "Added 4 rooms. Tap one to add photos.");
     } catch (e) { toast.error(errorText(e)); } finally { setBusy(""); }
   };
 
@@ -67,8 +70,8 @@ export default function RoomsStep() {
   const p = state?.property;
   const first = !!state?.first_setup;
   return (
-    <Screen back eyebrow={`${first ? "Set up" : p?.name || "Rental"} · Step 2 of 3`} title="Rooms & appliances" onRefresh={load} testID="onboarding-rooms"
-      sub="Scan each room and tag what's in it, so Bullpen knows every appliance when something breaks.">
+    <Screen back eyebrow={`${first ? "Set up" : p?.name || "Rental"} · Step 2 of 3`} title="Scan your rooms" onRefresh={load} testID="onboarding-rooms"
+      sub="Scan each room in 3D, or add photos, so Bullpen knows every appliance when something breaks.">
       <Steps step={1} />
       {!!error && <Notice testID="rooms-error">{error}</Notice>}
       {!state && !error && <Skeleton height={220} testID="rooms-loading" />}
@@ -82,16 +85,17 @@ export default function RoomsStep() {
           <Btn variant="link" label="Edit" onPress={() => router.push(`/onboarding?pid=${p.id}`)} testID="rooms-edit-address-button" />
         </Card>
       )}
+      {state && <ScanIntro support={support} />}
 
       {state && state.rooms.length === 0 && (
-        <EmptyState pose="sniff" motion="sniff" title="Which rooms are there?" body="Start with the basics in one tap, or add rooms one at a time." testID="rooms-empty">
+        <EmptyState pose="sniff" motion="sniff" title="First, which rooms are there?" body="Add the rooms, then scan them one by one." testID="rooms-empty">
           <Btn label="Add the basic 4 rooms" icon="layout-grid" busy={busy === "starter"} disabled={!!busy} onPress={starter} testID="rooms-starter-button" />
           <T size={13} muted style={{ textAlign: "center" }}>Kitchen, living room, bedroom and bathroom</T>
           <Btn label="Add one room" icon="plus" variant="secondary" disabled={!!busy} onPress={() => setAdding(true)} testID="rooms-add-first-button" />
         </EmptyState>
       )}
 
-      {state?.rooms.map((r, i) => <RoomCard key={r.id} r={r} i={i} onOpen={() => router.push(`/onboarding/room/${r.id}`)} onDelete={() => setDel(r)} />)}
+      {state?.rooms.map((r, i) => <RoomCard key={r.id} r={r} i={i} arReady={ready} onOpen={() => openRoom(r.id)} onScan={() => openRoom(r.id, true)} onDelete={() => setDel(r)} />)}
 
       {state && state.rooms.length > 0 && (
         <Btn label="Add another room" icon="plus" variant="secondary" onPress={() => setAdding(true)} testID="rooms-add-button" />
@@ -119,7 +123,7 @@ export default function RoomsStep() {
           })}
         </View>
         <Field label="Name (optional)" value={label} onChangeText={setLabel} placeholder={`e.g. Upstairs ${roomMeta(type).label.toLowerCase()}`} maxLength={80} testID="room-label-input" />
-        <Btn label="Add & scan it" icon="scan-line" busy={busy === "add"} disabled={!!busy} onPress={create} testID="add-room-confirm-button" />
+        <Btn label={ready ? "Add & scan in 3D" : "Add room"} icon={ready ? "scan-line" : "plus"} busy={busy === "add"} disabled={!!busy} onPress={create} testID="add-room-confirm-button" />
       </Sheet>
       <ConfirmSheet open={!!del} onClose={() => setDel(null)} title={`Remove ${del ? roomTitle(del) : "room"}?`} confirmLabel="Remove room" onConfirm={remove} busy={busy === "delete"} testID="delete-room-sheet"
         body={del?.items.length ? `Its ${del.items.length} tagged ${del.items.length === 1 ? "item goes" : "items go"} too.` : "Nothing has been tagged in it yet."} />
@@ -129,31 +133,28 @@ export default function RoomsStep() {
   );
 }
 
-function RoomCard({ r, i, onOpen, onDelete }: { r: Room; i: number; onOpen: () => void; onDelete: () => void }) {
+function RoomCard({ r, i, arReady, onOpen, onScan, onDelete }: { r: Room; i: number; arReady: boolean; onOpen: () => void; onScan: () => void; onDelete: () => void }) {
   const { colors } = useTheme();
   const s = useStyles();
   const meta = roomMeta(r.type);
   const frames = r.scan_data.frames?.length || 0;
   const scanned = !!(r.scan_data.geometry || r.scan_data.ar);
   const done = r.status === "complete";
-  const bits = [`${r.items.length} ${r.items.length === 1 ? "item" : "items"}`, frames ? `${frames} photo${frames > 1 ? "s" : ""}` : null, scanned ? "AR scan" : null].filter(Boolean).join(" · ");
+  const bits = [scanned ? "Scanned in 3D" : frames ? `${frames} photo${frames > 1 ? "s" : ""}` : "Not scanned yet", `${r.items.length} ${r.items.length === 1 ? "item" : "items"}`].join(" · ");
   return (
     <Card delay={i * 70} style={{ padding: 0 }} testID={`room-card-${r.id}`}>
       <Pressable onPress={onOpen} style={({ pressed }) => [s.roomRow, pressed && { opacity: 0.8 }]} testID={`room-card-${r.id}-open`}>
-        <View style={[s.roomIcon, done && { backgroundColor: colors.successSoft }]}><Icon name={meta.icon} size={22} color={done ? colors.success : colors.brand} /></View>
+        <View style={[s.roomIcon, done && { backgroundColor: colors.successSoft }]}><Icon name={done ? "check" : meta.icon} size={22} color={done ? colors.success : colors.brand} /></View>
         <View style={{ flex: 1, gap: 2 }}>
           <H size={20} numberOfLines={1}>{roomTitle(r)}</H>
-          <T size={13} muted numberOfLines={1}>{bits}</T>
+          <T size={13} muted numberOfLines={1} testID={`room-card-${r.id}-summary`}>{bits}</T>
         </View>
-        <Badge kind={done ? "ready" : "warn"} icon={done ? "check" : undefined} label={done ? "Done" : "To scan"} />
         <Icon name="chevron-right" size={18} color={colors.muted} />
       </Pressable>
       <View style={s.roomFoot}>
-        <View style={{ flexDirection: "row", gap: 6, flex: 1 }}>
-          {r.items.slice(0, 6).map((it) => <View key={it.id} style={s.bubble}><Icon name={itemIcon(it.name, it.category)} size={13} color={colors.brand} /></View>)}
-          {r.items.length > 6 && <View style={s.bubble}><T size={11} weight="bold" muted>+{r.items.length - 6}</T></View>}
-          {r.items.length === 0 && <T size={13} muted>Tap to scan or add photos</T>}
-        </View>
+        {arReady
+          ? <Btn small icon="scan-line" label={scanned ? "Scan again" : "Scan in 3D"} variant={scanned ? "secondary" : "primary"} style={{ flex: 1 }} onPress={onScan} testID={`room-card-${r.id}-scan-button`} />
+          : <Btn small icon="camera" label={frames ? "Add more photos" : "Add photos"} variant="secondary" style={{ flex: 1 }} onPress={onOpen} testID={`room-card-${r.id}-photos-button`} />}
         <Pressable onPress={onDelete} style={s.trash} hitSlop={6} testID={`room-card-${r.id}-delete`} accessibilityLabel="Remove room">
           <Icon name="trash-2" size={16} color={colors.muted} />
         </Pressable>
@@ -168,7 +169,6 @@ const useStyles = makeStyles((c) => ({
   roomRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, paddingBottom: 10 },
   roomIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: c.warningSoft, alignItems: "center", justifyContent: "center" },
   roomFoot: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingBottom: 12, paddingTop: 10, borderTopWidth: 1.5, borderTopColor: c.border },
-  bubble: { width: 28, height: 28, borderRadius: 14, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
   trash: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -5 },
   cell: { width: "33.33%", padding: 5 },

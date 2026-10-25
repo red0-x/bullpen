@@ -71,10 +71,13 @@ class TestGeocodeOSM:
         r = u.post(f"{API}/onboarding/geocode", json={"address": "1600 Amphitheatre Pkwy Mountain View"})
         assert r.status_code == 200, r.text
         d = r.json()
-        assert d.get("source") == "osm"
-        assert d["results"] and all(x["source"] == "osm" for x in d["results"])
+        # Geocoding API off: Google Places text search answers first, OpenStreetMap only if Places is off too
+        assert d.get("source") in ("google", "osm")
+        assert d["results"] and all(x["source"] == d["source"] for x in d["results"])
         x = d["results"][0]
         assert "Mountain View" in x["formatted_address"] and abs(x["lat"] - 37.42) < 0.1
+        if d["source"] == "google":
+            assert x["street"].startswith("1600")  # house number kept
 
     def test_gibberish_422(self, u):
         time.sleep(1)

@@ -178,7 +178,7 @@ function ServiceRow({ x, last }: { x: any; last: boolean }) {
       <View style={s.body}>
         <View style={s.top}>
           <T weight="semi" style={{ flex: 1 }}>Service done</T>
-          {x.cost != null && <Badge label={money(x.cost)} testID={`history-service-${x.id}-cost`} />}
+          {x.cost != null && <T size={14} weight="semi" testID={`history-service-${x.id}-cost`}>{money(x.cost)}</T>}
         </View>
         <T size={13} muted>{fmtDay(x.done_on, true)} · {x.contractor || "You did it"}</T>
         {!!x.note && <T size={13} muted numberOfLines={3}>{x.note}</T>}
@@ -197,16 +197,11 @@ function RepairRow({ x, last, onPress }: { x: any; last: boolean; onPress: () =>
       <View style={s.body}>
         <View style={s.top}>
           <T weight="semi" style={{ flex: 1 }} numberOfLines={2}>{x.kind === "service" ? "Service job" : x.what}</T>
-          {x.cost != null && <Badge label={money(x.cost)} testID={`history-repair-${x.issue_id}-cost`} />}
+          {x.cost != null && <T size={14} weight="semi" testID={`history-repair-${x.issue_id}-cost`}>{money(x.cost)}</T>}
         </View>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
           <Badge kind={kind} label={st} />
-          {x.rating != null && (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-              <Icon name="star" size={12} color={colors.star} /><T size={12} weight="semi">{x.rating}</T>
-            </View>
-          )}
-          {x.no_shows > 0 && <Badge kind="warn" label={`${x.no_shows} no-show${x.no_shows > 1 ? "s" : ""}`} />}
+          <T size={12} muted>{[x.rating != null ? `${x.rating} stars` : null, x.no_shows > 0 ? `${x.no_shows} no-show${x.no_shows > 1 ? "s" : ""}` : null].filter(Boolean).join(" · ")}</T>
         </View>
         <T size={13} muted>{fmtDate(x.fixed_on || x.date)}{x.contractor ? ` · ${x.contractor}` : ""}</T>
       </View>

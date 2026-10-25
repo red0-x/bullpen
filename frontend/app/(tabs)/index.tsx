@@ -9,6 +9,8 @@ import { Screen } from "@/src/components/Screen";
 import { DoneSheet, ServiceTarget } from "@/src/components/ServiceSheets";
 import { Badge, Btn, Card, EmptyState, H, Notice, Skeleton, T } from "@/src/ui";
 
+const TOP = 5; // Fix-it shows the most urgent five; the rest sit behind "Show all"
+
 const KIND: Record<string, ["warn" | "neutral", string]> = {
   issue: ["warn", "Waiting on a contractor"],
   outcome: ["neutral", "Outcome not logged"],
@@ -82,6 +84,7 @@ export default function FixIt() {
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState("");
   const [done, setDone] = useState<ServiceTarget | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   const load = useCallback(() => api("/fixit").then((d) => { setData(d); setErr(""); }).catch((e) => setErr(errorText(e))), []);
   const actions = useContractorActions(load);
@@ -114,25 +117,26 @@ export default function FixIt() {
         {data?.items.length === 0 && data.setup.properties > 0 && data.setup.contractors > 0 && (
           <EmptyState pose="sleep" motion="breathe" testID="fixit-empty-state" title="Your bench is ready. Nothing needs you today." />
         )}
-        {data?.items.map((i: any, idx: number) => (
+        {data?.items.slice(0, showAll ? undefined : TOP).map((i: any, idx: number) => (
           <Card key={i.id} delay={Math.min(idx, 8) * 50} style={{ gap: 12 }} testID={`fixit-item-${i.id}`}>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            <View style={{ flexDirection: "row" }}>
               <Badge kind={KIND[i.kind][0]} label={i.kind === "issue" && i.status === "open" ? "Needs a contractor" : i.kind === "service" && i.overdue ? "Service overdue" : KIND[i.kind][1]} />
-              {i.urgency && <Badge label={URGENCY[i.urgency]} />}
             </View>
             <View style={{ gap: 2 }}>
               <T weight="semi" size={16}>{i.title}</T>
-              {(i.subtitle || i.guest_arrival || i.scheduled_for) && (
+              {(i.subtitle || i.urgency || i.guest_arrival || i.scheduled_for) && (
                 <T size={14} muted>
-                  {i.subtitle}
-                  {i.guest_arrival ? ` · Guests ${fmtWhen(i.guest_arrival)}` : ""}
-                  {i.scheduled_for ? ` · Booked for ${fmtWhen(i.scheduled_for)}` : ""}
+                  {[i.urgency && URGENCY[i.urgency], i.subtitle, i.guest_arrival && `Guests ${fmtWhen(i.guest_arrival)}`, i.scheduled_for && `Booked for ${fmtWhen(i.scheduled_for)}`].filter(Boolean).join(" · ")}
                 </T>
               )}
             </View>
             {i.kind === "service" ? <ServiceAction item={i} onDone={setDone} /> : <ItemAction item={i} actions={actions} reload={load} />}
           </Card>
         ))}
+        {data?.items.length > TOP && (
+          <Btn label={showAll ? "Show fewer" : `Show all ${data.items.length}`} icon={showAll ? "chevron-up" : "chevron-down"} variant="secondary"
+            onPress={() => setShowAll((v) => !v)} testID="fixit-show-all-button" />
+        )}
         <DoneSheet target={done} onClose={() => setDone(null)} onSaved={load} />
     </Screen>
   );

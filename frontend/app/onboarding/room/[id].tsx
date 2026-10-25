@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import Constants from "expo-constants";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeIn, FadeInDown, LinearTransition } from "react-native-reanimated";
 import { api, errorText, photoSource } from "@/src/api";
-import { getArSupport, RoomScanner } from "@/src/ar/RoomScanner";
-import type { ArSupport, ScanResult } from "@/src/ar/types";
+import { RoomScanner } from "@/src/ar/RoomScanner";
+import { arUnavailableText, useArSupport } from "@/src/ar/ScanAvailability";
+import type { ScanResult } from "@/src/ar/types";
 import { Screen } from "@/src/components/Screen";
 import { ItemRow } from "@/src/onboarding/ItemRow";
 import { ItemSheet } from "@/src/onboarding/ItemSheet";
@@ -19,18 +19,16 @@ import { Frame, ItemDraft, itemIcon, mergeSuggestions, Room, ROOM_TYPES, roomMet
 import { useCameraGate } from "@/src/onboarding/useCameraGate";
 import { toast } from "@/src/toast";
 import { makeStyles, useTheme } from "@/src/theme";
-import { Badge, Btn, Card, Chip, ChipWrap, Field, H, Icon, Notice, Sheet, Skeleton, T } from "@/src/ui";
-
-const isExpoGo = Constants.executionEnvironment === "storeClient";
+import { Btn, Card, Chip, ChipWrap, Field, H, Icon, Notice, Sheet, Skeleton, T } from "@/src/ui";
 
 export default function RoomCapture() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, scan } = useLocalSearchParams<{ id: string; scan?: string }>();
   const router = useRouter();
   const { colors } = useTheme();
   const s = useStyles();
   const [room, setRoom] = useState<Room | null>(null);
   const [error, setError] = useState("");
-  const [support, setSupport] = useState<ArSupport | null>(null);
+  const { support } = useArSupport();
   const [scanner, setScanner] = useState<"roomplan" | "xr" | null>(null);
   const [working, setWorking] = useState("");
   const [draft, setDraft] = useState<ItemDraft | null>(null);
@@ -42,7 +40,6 @@ export default function RoomCapture() {
     try { setRoom(await api<Room>(`/onboarding/rooms/${id}`)); setError(""); } catch (e) { setError(errorText(e)); }
   }, [id]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
-  useEffect(() => { getArSupport().then(setSupport).catch(() => setSupport({ roomplan: false, xr: false })); }, []);
 
   const patch = async (body: any) => {
     const r = await api<Room>(`/onboarding/rooms/${id}`, { method: "PATCH", body });
@@ -108,6 +105,14 @@ export default function RoomCapture() {
 
   const startAR = () => camera.ensure(() => setScanner(support?.roomplan ? "roomplan" : "xr"),
     "Bullpen uses the camera to map the room in AR and tag each appliance where it sits.");
+
+  // Arrived from a room's "Scan in 3D" button: open the scanner straight away (once).
+  const autoScan = useRef(scan === "1");
+  useEffect(() => {
+    if (!autoScan.current || !room || !support) return;
+    autoScan.current = false;
+    if (support.roomplan || support.xr) startAR();
+  }, [room, support]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onScan = async (res: ScanResult) => {
     setScanner(null);
@@ -204,10 +209,8 @@ export default function RoomCapture() {
   const typeHint = room.type === "other" && suggested?.type && suggested.type !== "other" ? suggested.type : null;
 
   return (
-    <Screen back eyebrow={meta.label} title={roomTitle(room)} sub="Scan it or snap a few photos, then tag every appliance and fixture." testID="room">
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <Badge kind={done ? "ready" : "warn"} icon={done ? "check" : undefined} label={done ? "Done" : "In progress"} testID="room-status" />
-        <View style={{ flex: 1 }} />
+    <Screen back eyebrow={meta.label} title={roomTitle(room)} sub="Scan it in 3D or add photos, then check the appliances Bullpen tagged." testID="room">
+      <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
         <Btn variant="link" icon="pencil" label="Rename" onPress={() => setEditing({ type: room.type, label: room.label })} testID="room-edit-button" />
       </View>
 
@@ -220,10 +223,10 @@ export default function RoomCapture() {
 
       <Card style={{ gap: 14 }} testID="room-capture-card">
         <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>
-          <View style={s.heroIcon}><Icon name={geo || ar ? "cuboid" : "scan-line"} size={26} color={colors.brand} /></View>
+          <View style={s.heroIcon}><Icon name="cuboid" size={26} color={colors.brand} /></View>
           <View style={{ flex: 1 }}>
-            <H size={22}>{geo || ar ? "Scan saved" : "Capture the room"}</H>
-            <T size={14} muted>{geo || ar ? "Scan again any time, or add photos for close-ups." : "AR maps it in a minute. Photos work everywhere."}</T>
+            <H size={22}>{geo || ar ? "3D scan saved" : "3D room scan"}</H>
+            <T size={14} muted>{geo || ar ? "Scan again any time, or add photos for close-ups." : arReady ? "Walk the room slowly with your phone. It takes about a minute." : "Not available here. Add photos below."}</T>
           </View>
         </View>
         {(geo || ar) && (
@@ -236,20 +239,17 @@ export default function RoomCapture() {
           </View>
         )}
         {arReady ? (
-          <Btn big={!geo && !ar} label={support!.roomplan ? (geo ? "Scan again in 3D" : "Scan room in 3D") : ar ? "Tag more in AR" : "Scan & tag in AR"} icon="scan-line"
+          <Btn big={!geo && !ar} label={geo || ar ? "Scan again in 3D" : "Scan room in 3D"} icon="scan-line"
             onPress={startAR} disabled={!!working} testID="room-ar-scan-button" />
         ) : support && (
-          <Notice testID="room-ar-unavailable">
-            {Platform.OS === "web" ? "AR room scanning runs in the Bullpen phone app. Here, add photos and tag them instead."
-              : isExpoGo ? "AR scanning needs the installed Bullpen app, not Expo Go. Photos work great meanwhile."
-              : "This phone can't do AR scans. Photos work great instead."}
-          </Notice>
+          <Notice testID="room-ar-unavailable">{arUnavailableText()}</Notice>
         )}
+        <T size={13} weight="semi" muted style={{ textAlign: "center" }}>{arReady ? "Or add photos" : "Add photos"}</T>
         <View style={{ flexDirection: "row", gap: 10 }}>
           <Btn label="Camera" icon="camera" variant={arReady || frames.length ? "secondary" : "primary"} style={{ flex: 1 }} onPress={takePhoto} disabled={!!working} testID="room-take-photo-button" />
           <Btn label="Upload" icon="image-plus" variant="secondary" style={{ flex: 1 }} onPress={pickPhotos} disabled={!!working} testID="room-upload-button" />
         </View>
-        {Platform.OS !== "web" && <Btn label="Record a walkthrough" icon="video" variant="secondary" onPress={recordVideo} disabled={!!working} testID="room-video-button" />}
+        {Platform.OS !== "web" && <Btn label="Record a walkthrough video" icon="video" variant="link" style={{ alignSelf: "center" }} onPress={recordVideo} disabled={!!working} testID="room-video-button" />}
       </Card>
 
       {frames.length > 0 && (
@@ -314,7 +314,7 @@ export default function RoomCapture() {
       <Card style={{ gap: 4 }} testID="room-items">
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
           <H size={20} style={{ flex: 1 }}>Tagged items</H>
-          <Badge label={`${room.items.length}`} testID="room-items-count" />
+          <T size={14} weight="semi" muted testID="room-items-count">{room.items.length}</T>
         </View>
         {room.items.length === 0
           ? <T size={14} muted style={{ paddingVertical: 8 }}>Nothing tagged yet. Scan, tap a photo, or add one by hand.</T>

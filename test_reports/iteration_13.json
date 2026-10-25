@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 13: frontend-only test of AR scan discoverability and the decluttered UI (web preview 390x844, test_ui11). Every item in the review request PASSED. (1) Add a rental -> '1 Market St, San Francisco' -> Find address -> result 0 -> Use this address lands on /onboarding/rooms?pid=..., titled 'Scan your rooms', eyebrow 'MARKET STREET · STEP 2 OF 3'. The step bar reads Address/Scan rooms/Finish with states done/now/next. (2) scan-intro shows before any rooms exist. Status reads 'Not available here', the body reads '3D scanning runs in the Bullpen app on your phone, not in a browser...', and scan-intro-devices lists iPhone 12 Pro+ and other iPhones/Android. (3) 'Add the basic 4 rooms' creates Kitchen/Living room/Bedroom/Bathroom cards. Each card has an 'Add photos' button (264x50) and no scan-button. Each summary reads 'Not scanned yet · 0 items'. There is no 'To scan' badge. The trash button is 44x44. (4) The room screen shows a '3D room scan' heading, the room-ar-unavailable notice with the browser text, an 'Add photos' label and Camera/Upload buttons. It has no 'In progress' badge and no video button, and Rename is still there. (5) /onboarding/room/<id>?scan=1 shows the normal room screen with the unavailable notice and does not crash. (6) The add-room sheet confirm button reads 'Add room' and opens the new room (Garage). (7) Step 3 is titled 'Finish up' and its rows show no Done/To scan badges. Finish setup shows the 'You're all set!' sheet with 'Back to rentals'. (8) On the Rentals tab all 4 cards say 'Scan rooms', and the Tahoe button opens Step 2 for Tahoe. Amenity badges are plain text ('1 contractor', '2 contractors'), and there is no '#1'/score line. (9) Fix-it shows 5 of 6 cards, each with one badge. 'Show all 6' reveals the 6th and changes to 'Show fewer', which goes back to 5. Urgency appears in the subtitle ('This week · Kitchen sink draining slowly'). (10) Issue screen: issue-status reads 'Open' and issue-meta reads 'This week · Plumbing'. A booked service job shows 'Routine service · This week · Plumbing'. The outcome row has one 'On time' badge, and outcome-<id>-cost reads '4 stars · $185.50' as plain text. (11) appliances-summary is plain text ('1 tagged · 1 with reminders · 1 due soon'). The water heater badge 'Due in 5 days' is a warn badge, which is correct because it is due soon. History cost '$185.50' is plain text. (12) Regression: Fix-it Mark done -> Done sheet -> save removes the card, and Undo brings it back (next_due 2026-10-30, no logs). Bench chips show avatars, and the remembered rental is saved in localStorage last_property. Snap Describe it -> AI diagnosis works. No console errors except the Google staticmap 502/503, which existed before.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/onboarding/staticmap, POST /api/onboarding/place", "issue": "These return 502/503 because the Google Maps/Places key is missing or failing ('Maps aren't set up yet.'). The review map falls back to a placeholder, so this is cosmetic. It existed before this iteration."},
+      {"endpoint": "DELETE /api/issues/{id}", "issue": "Deleting an issue leaves its job_outcomes documents behind, which can skew contractor stats. Seen while cleaning up test data."},
+      {"endpoint": "DELETE /api/properties/{id}", "issue": "This endpoint does not exist (404), and the UI has no way to delete a rental either. The user's follow-up said they 'tried deleting old houses' and could not, so hosts have no way to remove a rental."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Snap remembered rental", "issue": "With last_property set to Joshua Tree, a typed 'Pool pump making a loud grinding noise' (no rental named) was assigned to Tahoe Cabin. autoFill (snap.tsx:46-54) uses the AI's g.property_id or the single-home appliance match before the remembered rental, so this may be by design. Worth confirming.", "affected_testIDs": ["snap-property"]}
+    ],
+    "design_issues": [
+      {"screen": "Room screen (web)", "issues": ["The screen sub-text still says 'Scan it in 3D or add photos...' while the card says 'Not available on this device.' On web the sub-text could say 'Add photos...' only. The status wording is also inconsistent: Step 2 says 'Not available here' and the room screen says 'Not available on this device'."]},
+      {"screen": "Onboarding address", "issue_note": "minor", "issues": ["Address result 0 for '1 Market St, San Francisco' saved as 'Market Street, San Francisco, CA 94105', which drops the house number '1'. This is probably the geocode fallback, since /place returns 503."]},
+      {"screen": "Fix-it", "issues": ["The 'Bench watch' card has the badge 'Bench watch' and the subtitle 'Bench watch · sample data', which repeats the label."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_13.json"],
+  "action_items": [
+    "Optional: let hosts delete a rental. Add DELETE /api/properties/{id} with cascade, and a 'Remove rental' action on the Rentals card or the Edit address screen. The user said they tried to delete old houses.",
+    "Optional: on web, change the room screen sub-text to fit the 'add photos' path, and use the same wording ('Not available here') on Step 2 and the room screen.",
+    "Optional: when an issue is deleted, also delete its job_outcomes.",
+    "Optional: check that Snap should prefer the remembered rental over the AI/appliance-guessed rental when the host does not name one."
+  ],
+  "critical_code_review_comments": [
+    "ScanIntro returns null while getArSupport() is pending. This is fine on web because it resolves at once. On native, if the xr check hangs, the card never appears and no fallback is shown.",
+    "rooms.tsx create(): openRoom(r.id, ready) auto-launches the scanner on native, and the confirm label changes to 'Add & scan in 3D' to match. The behaviour is consistent.",
+    "No deprecated expo packages found (no expo-av, expo-barcode-scanner or expo-background-fetch in package.json). expo-video-thumbnails is used for walkthrough frames and is only shown on native."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not in scope)", "frontend": "100% of requested checks (12/12)"},
+  "seed_data_creation": "Temporarily created a 'Market Street' rental with 5 rooms, a TEST_ repair issue with an outcome, and a booked service job on the Tahoe water heater. All were removed afterwards: the issues via DELETE /api/issues, and the orphan outcome, rooms and property via MongoDB because no property delete endpoint exists. Tahoe water heater is unchanged: yearly, due 2026-10-30, 0 logs, 0 jobs.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_ui11 IDs changed since iteration 12: Tahoe e99b1a48-b206-4b87-95b0-32154172ebd8, Joshua 0b5eaa25-0b94-48a5-968f-7878748055ac, Oakland 322f0a6e-cb03-4503-a980-82ff52b9aed7. Water heater item 662e3d26-0426-4db2-8909-92016dcc4246. Address input testID is address-input, results are address-result-N, confirm is address-confirm-button. Fix-it card text isn't pressable, so use the 'Find help' button to open an issue. POST /issues/{id}/outcome needs a contractor_id unless someone was booked. Outcome undo expires quickly. There is no DELETE /api/properties."
+}

@@ -4,7 +4,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTimi
 import { makeStyles, useTheme } from "@/src/theme";
 import { Icon, T } from "@/src/ui";
 
-const STEPS = ["Address", "Rooms", "Review"];
+const STEPS = ["Address", "Scan rooms", "Finish"];
 
 // Three-part progress bar; each segment fills in turn when the step changes.
 export function Steps({ step }: { step: 0 | 1 | 2 }) {

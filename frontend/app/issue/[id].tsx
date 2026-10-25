@@ -30,11 +30,11 @@ function IssueHeader({ data }: { data: any }) {
       ) : (
         <View style={[s.photo, { alignItems: "center", justifyContent: "center" }]}><Mascot pose="wrench" size={130} /></View>
       )}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Badge kind={STATUS[issue.status]} label={issue.status[0].toUpperCase() + issue.status.slice(1)} testID="issue-status" />
-        {issue.kind === "service" && <Badge icon="calendar-clock" label="Routine service" testID="issue-service-badge" />}
-        {issue.urgency && <Badge label={URGENCY[issue.urgency]} />}
-        <Badge label={issue.trade_needed} />
+        <T size={13} muted numberOfLines={1} style={{ flex: 1 }} testID="issue-meta">
+          {[issue.kind === "service" ? "Routine service" : null, issue.urgency && URGENCY[issue.urgency], issue.trade_needed].filter(Boolean).join(" · ")}
+        </T>
       </View>
       <T muted testID="issue-diagnosis">{issue.ai_diagnosis || issue.host_note}</T>
       {data.item && (

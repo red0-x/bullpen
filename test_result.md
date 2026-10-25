@@ -155,3 +155,15 @@ frontend:
       - working: "NA"
         agent: "main"
         comment: "Backend tests/test_iter11_maintenance.py 7/7 pass (-n 0). Emergent managed email verified with delivered@resend.dev. Reminder emails skip example.com addresses on purpose."
+
+  - task: "Iter13: user said 'too many buttons' and 'couldn't find the AR room scan at all' -> clear Scan rooms step + calmer screens"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/ar/ScanAvailability.tsx, /app/frontend/app/onboarding/{rooms,review}.tsx, /app/frontend/app/onboarding/room/[id].tsx, /app/frontend/src/onboarding/Steps.tsx, /app/frontend/app/(tabs)/{index,properties}.tsx, /app/frontend/app/issue/[id].tsx, /app/frontend/src/components/issue/Outcomes.tsx, /app/frontend/app/{appliances,appliance/[id]}.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Steps now Address / Scan rooms / Finish. Step 2 is titled 'Scan your rooms' and has a 3D room scan card (scan-intro) saying whether 3D works on this device. On web it says it runs in the phone app, not a browser. Each room card has a Scan in 3D button (native with AR) or an Add photos button. ?scan=1 opens the scanner automatically. The room screen always shows a 3D room scan section. Fix-it shows 5 items with Show all. Fewer badges: urgency/trade moved to text, amenity tiles use plain coverage text, room 'To scan' badges removed."

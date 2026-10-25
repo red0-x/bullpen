@@ -103,3 +103,14 @@ See /app/memory/test_credentials.md
   - Screens: /appliance/[id] (stats, service card, timeline) and /appliances?pid= (a rental's appliances by room).
   - Entry points: the Rentals "Appliances" button, the ItemSheet "Service reminders & history" button, the issue screen's appliance row, and the Fix-it History button.
 - **Maps:** the Google Geocoding API and Maps Static API are still not enabled on the user's key. The code uses them automatically once they are turned on (within 5 minutes).
+
+## 2026-06: Clear 3D scan step + calmer screens (iteration 13)
+- User feedback: too many buttons, and the AR room scan couldn't be found at all.
+- **3D scan:**
+  - The steps now read Address / Scan rooms / Finish. Step 2 is titled "Scan your rooms" and has a "3D room scan" card (src/ar/ScanAvailability.tsx) that says whether 3D works on this device, and where it does work.
+  - Each room card has a "Scan in 3D" button (it opens the room with ?scan=1, which starts the scanner straight away), or "Add photos" where AR isn't available. The room screen always shows a 3D room scan section.
+  - The Rentals button always says "Scan rooms".
+- **Fix-it:** shows 5 items, with "Show all N" for the rest.
+- **Fewer badges:** one badge per Fix-it card, issue header and outcome. Urgency, trade, stars and cost became plain text. Amenity tiles show plain coverage text. Room Done/To scan badges were removed.
+- **"Find address":** while the Geocoding API is off, it now tries Google Places text search first (keeps the house number), then OpenStreetMap.
+- **Open:** there is no way to delete a rental yet (the user tried to delete old houses).

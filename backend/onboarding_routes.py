@@ -396,6 +396,12 @@ async def geocode(body: GeocodeIn, host: dict = Depends(current_host)):
 
 
 async def osm_geocode(address: str) -> dict:
+    """Geocoding API off: Google Places text search (keeps the house number), then OpenStreetMap."""
+    body = await places_call("POST", "places:searchText", "places.id,places.formattedAddress,places.addressComponents,places.location",
+                             json_body={"textQuery": address, "languageCode": "en", "regionCode": "us", "pageSize": 3})
+    found = [places_geo(p) for p in (body or {}).get("places", []) if (p.get("location") or {}).get("latitude") is not None]
+    if found:
+        return {"results": found, "source": "google"}
     results = await photon_search(address, 3)
     if not results:
         raise HTTPException(422, "We couldn't find that address. Check the street, city and zip, or save it as typed.")
