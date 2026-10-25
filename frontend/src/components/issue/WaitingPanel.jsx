@@ -40,7 +40,7 @@ export function WaitingPanel({ requests, onRespond }) {
         {done.map((r) => (
           <div key={r.id} className="flex items-center justify-between gap-3 text-sm border-t-[1.5px] border-line pt-3" data-testid={`done-request-${r.id}`}>
             <span className="text-espresso font-semibold truncate">{r.contractor?.business_name}</span>
-            <span className={`badge ${r.response === "booked" ? "badge-ready" : "badge-neutral"}`}>{LABEL[r.response]}</span>
+            <span className={`badge ${r.response === "booked" && !r.no_show ? "badge-ready" : r.no_show ? "badge-warn" : "badge-neutral"}`}>{r.no_show ? "No-show" : LABEL[r.response]}</span>
           </div>
         ))}
       </div>

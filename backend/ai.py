@@ -65,6 +65,8 @@ async def diagnose(note: str, image_b64: str | None, properties: list, trades: l
         f"Allowed trades: {json.dumps(trades)}\n"
         "Look closely at the photo for visible damage: cracks, leaks, water stains, rust, mold, broken parts, "
         "scorch marks, error lights, clogs, cloudy or green water, frayed wires.\n"
+        "Write diagnosis and fix_steps speaking directly to the host (e.g. 'The toilet tank has a crack...'), "
+        "never 'the note describes' or 'the photo shows'.\n"
         "Return JSON with keys: can_tell (bool, false if the photo/note doesn't show a fixable problem), "
         "is_rental_issue (bool, false if it's a personal item like earbuds or a phone rather than part of a rental home), "
         "diagnosis (one or two plain sentences on what's wrong and the likely cause), "

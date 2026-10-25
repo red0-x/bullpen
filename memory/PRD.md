@@ -15,13 +15,13 @@ Self-managing STR hosts with 1–5 properties.
 See original statement; layers 1–6.
 
 ## Implemented
+- 2026-10-25 — Camera finished (live getUserMedia viewfinder on phone + desktop, fallback to native capture/upload) and AI "how to fix it" guidance (steps, safety, DIY vs pro, personal-item notice). Layers 2 (import contacts w/ preview, duplicates, Pick a trade, manual add, ranked bench, pin/status w/ undo), 4 (outcomes as new records, revisions on edit, 60s undo, live re-rank messages, no-show reopens + next backup, last-contacted for all), 5 (Fix-it home: waiting issues, outcomes, gaps, stale w/ Still active/Out of business/Snooze, watch alerts; onboarding + sleeping empty state), 6 (bench watch sample signals, score adjustments, flags mark unreachable, scripted Check now). Backend split: bench_routes.py, outcome_routes.py. Tested iteration_3 (backend 47/47), follow-up fixes applied.
 - 2026-10-24 — Layer 3 + landing: public scroll-animated landing at /, new puppy poses + cabin art (generated, same style; originals unchanged), animated Mascot component, Something broke photo/camera flow with GPT-5.4 vision diagnosis (40s timeout, manual fallback), issue page with top 3, request drafts (AI or template), Copy/Open in Messages, No answer/Declined/Booked with undo, Fix-it list of open issues. App home moved to /fix-it/. Tested (iteration_2), fixes applied after.
 - 2026-10-24 — Layer 1: auth, full data model, demo load (idempotent, undo) / reset (confirm), Properties screen with amenity tiles + coverage badges, header + design system, placeholders for Bench / Fix-it / Something broke. Tested (iteration_1), lockout fix applied after.
 
 ## Backlog
-- P0: Layer 2 (import contacts with AI + manual add, ranked bench, pinning)
-- P1: Layer 4 (outcomes, re-rank, undo), Layer 5 (coverage gaps, stale, Fix-it home)
-- P2: Layer 6 (Bench watch), maintenance schedules, Resend email, paid access/trial
+- P1: Guest arrival / booking date pickers styled (currently native datetime inputs)
+- P2: Maintenance schedule per amenity with "Book it", Resend email requests, paid access/trial, property & amenity editing UI
 
 ## Next tasks
-Layer 2.
+UI polish pass; maintenance schedules.

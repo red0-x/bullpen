@@ -160,7 +160,7 @@ async def fixit(host: dict = Depends(current_host)):
                                       "title": f"How did the {what.lower()} job at {p['name']} go?",
                                       "action": "Log outcome", "scheduled_for": ser(i).get("scheduled_for")})
         else:
-            items["waiting"].append({**base, "id": f"issue-{i['id']}", "kind": "issue",
+            items["waiting"].append({**base, "id": f"issue-{i['id']}", "kind": "issue", "status": i["status"],
                                      "title": f"{what} at {p['name']}: " + ("waiting on a reply" if i["status"] == "waiting" else "needs a contractor"),
                                      "action": "Find help" if i["status"] == "open" else "Check replies"})
 
@@ -196,4 +196,5 @@ async def fixit(host: dict = Depends(current_host)):
                                "subtitle": "Bench watch · sample data", "action": "Got it"})
 
     ordered = items["waiting"] + items["outcomes"] + items["gaps"] + items["stale"] + items["watch"]
-    return {"items": ordered, "counts": {k: len(v) for k, v in items.items()}}
+    return {"items": ordered, "counts": {k: len(v) for k, v in items.items()},
+            "setup": {"properties": len(catalog), "contractors": len(contractors)}}

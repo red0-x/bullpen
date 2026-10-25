@@ -67,7 +67,13 @@ export default function FixItPage() {
       </PageTitle>
       {err && <p className="card p-4 text-blush-ink" data-testid="fixit-error">{err}</p>}
       {!data && !err && <div className="card h-40 animate-pulse" />}
-      {data?.items.length === 0 && (
+      {data?.items.length === 0 && (data.setup.properties === 0 || data.setup.contractors === 0) && (
+        <EmptyState pose="glove" testId="fixit-setup-state" title="Let's build your bench" body="Add your rentals and the contractors you use. Bullpup will flag gaps and stale contacts here.">
+          <Link href="/properties/" className="btn btn-primary" data-testid="fixit-setup-properties-button">Load demo or add properties</Link>
+          <Link href="/bench/?tab=import" className="btn btn-secondary" data-testid="fixit-setup-import-button">Import contacts</Link>
+        </EmptyState>
+      )}
+      {data?.items.length === 0 && data.setup.properties > 0 && data.setup.contractors > 0 && (
         <EmptyState pose="sleep" motion="breathe" testId="fixit-empty-state" title="Your bench is ready. Nothing needs you today." />
       )}
       <div className="flex flex-col gap-3" data-testid="fixit-list">
@@ -75,7 +81,7 @@ export default function FixItPage() {
           <div key={i.id} className="card p-4 sm:p-5 flex flex-col md:flex-row md:items-center gap-4 animate-rise" style={{ animationDelay: `${idx * 50}ms` }} data-testid={`fixit-item-${i.id}`}>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap gap-2">
-                <span className={`badge ${KIND[i.kind][0]}`}>{KIND[i.kind][1]}</span>
+                <span className={`badge ${KIND[i.kind][0]}`}>{i.kind === "issue" && i.status === "open" ? "Needs a contractor" : KIND[i.kind][1]}</span>
                 {i.urgency && <span className="badge badge-neutral">{URGENCY[i.urgency]}</span>}
               </div>
               <p className="mt-2 font-semibold text-espresso">{i.title}</p>

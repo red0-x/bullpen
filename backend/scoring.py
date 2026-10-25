@@ -33,13 +33,9 @@ def watch_adjustments(signals: list, now: datetime) -> list:
         by_type.setdefault(s["signal_type"], []).append(s)
     out = []
     ratings = by_type.get("public_rating", [])
-    if len(ratings) >= 2:
-        new, month_ago = float(ratings[-1]["value"]), None
-        for s in ratings[:-1]:
-            if s["date"] >= now - timedelta(days=31):
-                month_ago = float(s["value"])
-                break
-        if month_ago is not None and month_ago - new >= 0.3:
+    if len(ratings) >= 2 and ratings[-2]["date"] >= now - timedelta(days=31):
+        new, month_ago = float(ratings[-1]["value"]), float(ratings[-2]["value"])
+        if month_ago - new >= 0.3:
             out.append((-min(15, round((month_ago - new) * 12)), f"Rating dropped from {month_ago:.1f} to {new:.1f} this month"))
     resp = by_type.get("response_time", [])
     if resp and float(resp[-1]["value"]) >= 240:

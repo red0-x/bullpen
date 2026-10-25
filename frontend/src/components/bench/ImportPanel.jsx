@@ -41,8 +41,9 @@ export function ImportPanel({ trades, onSaved, onManual }) {
       const payload = chosen.map(({ name, business_name, phone, email, trades: t, service_area, notes, choice, duplicate_of }) =>
         ({ name, business_name, phone, email, trades: t, service_area, notes, merge_into: choice === "merge" ? duplicate_of?.id : null }));
       const { data } = await api.post("/contractors/import", { rows: payload });
-      const placed = Object.entries(data.slots).filter(([, s]) => s.length).length;
-      toast.success(`Saved ${data.created} new, merged ${data.merged}. ${placed} matched to property slots.`, {
+      const placed = Object.entries(data.slots).filter(([, s]) => s.length);
+      const where = placed.length ? ` Added to ${placed.map(([n, s]) => `${n} (${s.join(", ")})`).join("; ")}.` : " None matched a property slot yet.";
+      toast.success(`Saved ${data.created} new, merged ${data.merged}.${where}`, {
         duration: 10000,
         action: { label: "Undo", onClick: async () => { await api.post(`/contractors/import/${data.batch_id}/undo`).catch(() => {}); onSaved(); } },
       });

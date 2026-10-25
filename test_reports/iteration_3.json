@@ -1,0 +1,52 @@
+{
+  "summary": "Tested the camera/diagnosis flow and Layers 2, 4, 5 and 6 end to end, on the backend (new pytest suite, 12 tests) and the frontend (Playwright, desktop plus a mobile check). All 47 backend tests pass, including the earlier layer1 and layer3 suites. Frontend first failed to load: the Next dev .next cache was corrupted (404 on chunks, 'Cannot find module ./611.js'). I fixed it by stopping the frontend, deleting .next and restarting. After that, almost every requested flow passed. Camera: the live dialog with a fake device captures a snap and shows the preview; when the camera is blocked, the error and 'Upload a photo' (file chooser) appear; uploading still works. Toilet photo plus note: Plumbing at Tahoe Cabin, numbered fix guide, 'Call a pro' badge and safety note; confirming creates the issue and the issue page shows issue-fix-guide. Bench: pin, status, undo and greyed unranked rows all work. Import: preview rows, duplicate merge/keep, 'Pick a trade' highlight with save disabled, save toast and undo, nothing-found message, and the manual add dialog all work. Add contractor plus undo works. Outcomes: no-show reopens the issue and opens the next-backup request dialog; undo restores; showed up resolves; edit creates a revision and re-ranks. Fix-it: order, demo items, stale and watch actions with undo, gap prefill and empty state all work. Watch: run1 and run2 messages, unranking and new Fix-it alerts all work. Host isolation works (404s). One functional bug: the earbuds photo shows the wrong notice.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "scoring.watch_adjustments / GET /api/bench", "issue": "Two different numbers for the same rating drop. The bench reason says 'Rating dropped from 4.6 to 3.9 this month' for High Desert Hot Tubs, but the Fix-it alert says 'from 4.7 to 3.9'. watch_adjustments takes the first rating from the last 31 days (the 4.6 baseline seeded at day -28) instead of the one the alert used (4.7 at day -24)."},
+      {"endpoint": "POST /api/issues/{id}/draft", "issue": "The AI draft is about the wrong trade. For a Plumbing issue sent to High Desert Hot Tubs, it wrote 'help with a hot tub issue', guessing from the business name. The draft context should include trade_needed and the amenity label."},
+      {"endpoint": "POST /api/issues/diagnose", "issue": "With a note, the diagnosis is phrased as 'The note describes a toilet...' rather than talking to the host directly. Prompt wording issue."},
+      {"endpoint": "DELETE /api/contractors/{id}", "issue": "The history check (db.requests / db.job_outcomes find_one) does not filter by host_id. Not exploitable because ids are UUIDs, but it is inconsistent with the other queries."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "something-broke/page.jsx line 48", "issue": "A photo of a personal item (earbuds) shows 'We couldn't tell from the photo' instead of the NOT_RENTAL notice. The AI returns can_tell=false and is_rental_issue=false, but the UI only shows NOT_RENTAL when can_tell is true. Check is_rental_issue === false first, whatever can_tell is.", "selector": "[data-testid='review-notice']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Brand-new host Fix-it list", "issue": "A host with zero properties and zero contractors sees the sleeping puppy 'Your bench is ready. Nothing needs you today.' This is misleading. Show an onboarding prompt (add a property, import contacts, load demo) instead.", "affected_selectors": ["[data-testid='fixit-empty-state']"]},
+      {"flow": "Issue page after no-show", "issue": "The Requests list still shows the no-show contractor with a 'Booked' badge. It should show 'No-show'.", "affected_selectors": ["[data-testid^='done-request-']"]},
+      {"flow": "Import save toast", "issue": "The toast only gives a count ('2 matched to property slots'), not the slot names. The backend already returns the slot names per contractor.", "affected_selectors": ["[data-sonner-toast]"]}
+    ],
+    "design_issues": [
+      {"screen": "Bench (desktop two-column)", "issues": ["The one-line reason is cut off heavily (e.g. 'Showed up 4 of 4, 4....'). Pinned rows put the pin icon on its own line, so names get cut too ('Oak Town Applian...')."]},
+      {"screen": "Something broke", "issues": ["The guest arrival field (capture-arrival-input) uses the browser's built-in date-time picker, not the shadcn calendar component."]},
+      {"screen": "Bench tabs (mobile 390px)", "issues": ["The 'Bench watch' tab is cut off at the right edge with nothing showing it can scroll."]},
+      {"screen": "Fix-it list", "issues": ["Open issues with no request yet are labelled 'Waiting on a contractor' while the title says 'needs a contractor'."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_bullpup_layers2456.py", "/app/backend/tests/test_bullpup_layer3.py", "/app/backend/tests/test_bullpup_layer1.py", "/app/test_reports/pytest/pytest_results.xml", "/app/test_reports/pytest/layers2456.xml"],
+  "action_items": [
+    "Fix the NOT_RENTAL notice in something-broke/page.jsx: show it whenever is_rental_issue === false, even if can_tell is false.",
+    "Make the bench reason use the same 'from' rating as the watch alert (scoring.watch_adjustments).",
+    "Add trade_needed and the amenity label to the draft_message context so drafts don't take the trade from the business name.",
+    "Show a no-show badge on requests whose contractor got a no-show outcome.",
+    "Replace the empty Fix-it state for hosts with no properties or contractors with onboarding.",
+    "Bench reason truncation on desktop; use the shadcn calendar for guest arrival.",
+    "Avoid running `next build` while the dev server is running: it corrupts .next and breaks the preview."
+  ],
+  "critical_code_review_comments": [
+    "Pin is a single global flag per contractor, so pinning someone puts them #1 in every slot they cover (Oak Town got pinned in both Appliance and HVAC). The spec reads as a per-slot favourite; check this is what you want.",
+    "rank_changes only reports contractors ranked both before and after. Someone who drops out of the ranking gets no message.",
+    "POST /api/demo/reset also wipes the demo host's own non-demo issues. Fine for the demo account, but worth a note in the UI copy.",
+    "server.py is 730 lines, over the 700-line guideline; consider splitting out the issues and requests routes."
+  ],
+  "updated_files": ["/app/backend/tests/test_bullpup_layers2456.py", "/app/frontend/.next (deleted and rebuilt to fix the corrupted dev cache; frontend restarted)"],
+  "success_rate": {"backend": "100% (47/47)", "frontend": "95% (1 functional bug: earbuds notice)"},
+  "test_credentials": "host@bullpup.example.com / bullpup123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None kept. Demo reset at the end; TEST_ users and their data deleted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && REACT_APP_BACKEND_URL=<url> python -m pytest tests/ (47 tests). test_bullpup_layers2456.py resets the demo at setup and teardown and assumes the watch run counter starts at 0. Test images: /tmp/toilet.jpg (unsplash photo-1584622650111-993a426fbf0a) and /tmp/earbuds.jpg (photo-1590658268037-6bf12165a8df). The toilet photo plus note gives Plumbing at Tahoe Cabin; earbuds give can_tell=false and is_rental_issue=false. The Playwright headless browser has a fake camera (grant_permissions camera works). Simulate a blocked camera with add_init_script that rejects getUserMedia with NotAllowedError. Server clock is Oct 2026. If the frontend shows an unstyled giant puppy image, the .next cache is corrupted: stop the frontend, rm -rf .next, start it again.",
+  "rca of the issue": "Frontend not loading: the .next dev cache was corrupted (missing ./611.js, Client Manifest errors), most likely from a production build overwriting .next while dev was running. Fixed by deleting .next and restarting. Earbuds notice: the AI correctly returns can_tell=false and is_rental_issue=false, but page.jsx line 48 only sets NOT_RENTAL when can_tell is true."
+}

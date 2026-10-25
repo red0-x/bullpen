@@ -45,7 +45,7 @@ export default function SomethingBrokePage() {
         const g = data.draft;
         d = { ...d, ...Object.fromEntries(Object.entries(g).filter(([, v]) => v !== null && v !== undefined)), property_id: g.property_id || d.property_id };
         if (!g.can_tell || !g.trade) msg = input.photo ? CANT_TELL : CANT_TELL_NOTE;
-        if (g.can_tell && g.is_rental_issue === false) msg = NOT_RENTAL;
+        if (g.is_rental_issue === false) msg = NOT_RENTAL;
         if (!g.diagnosis) d.diagnosis = input.note;
         if (g.guest_arrival && !input.arrival) setInput((i) => ({ ...i, arrival: g.guest_arrival.slice(0, 16) }));
       }

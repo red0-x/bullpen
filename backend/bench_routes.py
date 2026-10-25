@@ -138,8 +138,8 @@ async def patch_contractor(contractor_id: str, body: ContractorPatch, host: dict
 @router.delete("/contractors/{contractor_id}")
 async def delete_contractor(contractor_id: str, host: dict = Depends(current_host)):
     await get_owned("contractors", contractor_id, host["id"])
-    if await db.requests.find_one({"contractor_id": contractor_id}) or \
-            await db.job_outcomes.find_one({"contractor_id": contractor_id}):
+    if await db.requests.find_one({"contractor_id": contractor_id, "host_id": host["id"]}) or \
+            await db.job_outcomes.find_one({"contractor_id": contractor_id, "host_id": host["id"]}):
         raise HTTPException(400, "They have job history. Mark them out of business instead.")
     await db.contractors.delete_one({"id": contractor_id, "host_id": host["id"]})
     await db.watch_signals.delete_many({"contractor_id": contractor_id, "host_id": host["id"]})

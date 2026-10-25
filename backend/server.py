@@ -589,11 +589,13 @@ async def get_issue(issue_id: str, host: dict = Depends(current_host)):
     candidates = [c for c in bench if c["rank"] and not c["contacted"]][:3]
     outcomes = await db.job_outcomes.find({"issue_id": issue_id, "host_id": host["id"]}, {"_id": 0, "undo": 0}).to_list(200)
     outs = sorted(latest_revisions(outcomes), key=lambda o: o["created_at"])
+    no_shows = {o["contractor_id"] for o in outs if not o["showed_up"]}
     return {
         "outcomes": [ser({**o, "business_name": names.get(o["contractor_id"], {}).get("business_name")}) for o in outs],
         "issue": ser(issue), "property": ser(prop), "amenity": ser(amenity) if amenity else None,
-        "requests": [ser({**r, "contractor": {k: names.get(r["contractor_id"], {}).get(k) for k in
-                                               ("name", "business_name", "phone")}}) for r in reqs],
+        "requests": [ser({**r, "no_show": r.get("response") == "booked" and r["contractor_id"] in no_shows,
+                          "contractor": {k: names.get(r["contractor_id"], {}).get(k) for k in
+                                         ("name", "business_name", "phone")}}) for r in reqs],
         "candidates": candidates, "bench": bench,
         "active_total": len([c for c in bench if c["rank"]]),
     }
@@ -604,8 +606,11 @@ async def draft_request(issue_id: str, body: DraftIn, host: dict = Depends(curre
     issue = await get_owned("issues", issue_id, host["id"])
     prop = await get_owned("properties", issue["property_id"], host["id"])
     c = await get_owned("contractors", body.contractor_id, host["id"])
+    amenity = await db.amenities.find_one({"id": issue.get("amenity_id"), "host_id": host["id"]}, {"_id": 0}) \
+        if issue.get("amenity_id") else None
     ctx = {"host_name": host["name"], "contractor_name": c["name"], "business": c["business_name"],
-           "property": prop["name"], "address": prop["address"],
+           "property": prop["name"], "address": prop["address"], "trade_needed": issue["trade_needed"],
+           "what_broke": amenity["label"] if amenity else issue["trade_needed"],
            "problem": issue.get("ai_diagnosis") or issue.get("host_note") or issue["trade_needed"],
            "urgency": issue.get("urgency"), "guest_arrival": body.guest_arrival_text}
     try:

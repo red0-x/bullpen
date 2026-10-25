@@ -8,18 +8,18 @@ const STATUS_LABEL = { active: "Active", unreachable: "Unreachable", out_of_busi
 export function ContractorRow({ c, actions, position }) {
   const grey = !c.rank;
   return (
-    <div className={`rounded-[16px] border-[1.5px] border-line p-3 flex flex-col sm:flex-row sm:items-center gap-3 ${grey ? "bg-[#F4EEE6]" : "bg-white"}`} data-testid={`bench-row-${c.id}`}>
+    <div className={`rounded-[16px] border-[1.5px] border-line p-3 flex flex-col gap-3 ${grey ? "bg-[#F4EEE6]" : "bg-white"}`} data-testid={`bench-row-${c.id}`}>
       <div className={`flex items-center gap-3 min-w-0 flex-1 ${grey ? "opacity-60" : ""}`}>
         <span className="h-10 w-10 shrink-0 rounded-full bg-cream border-[1.5px] border-line grid place-items-center font-head text-espresso">
           {position ?? "–"}
         </span>
         <div className="min-w-0">
-          <p className="font-semibold flex items-center gap-1.5 flex-wrap">
-            {c.pinned && <Pin size={14} className="text-cap" aria-label="Pinned" />}
+          <p className="font-semibold flex items-center gap-1.5 min-w-0">
+            {c.pinned && <Pin size={14} className="text-cap shrink-0" aria-label="Pinned" />}
             <span className="truncate">{c.business_name || c.name}</span>
-            <ScorePill c={c} />
+            <span className="shrink-0"><ScorePill c={c} /></span>
           </p>
-          <p className="text-sm text-cocoa truncate" data-testid={`bench-reason-${c.id}`}>{c.reason}</p>
+          <p className="text-sm text-cocoa break-words" data-testid={`bench-reason-${c.id}`}>{c.reason}</p>
           <p className="text-xs text-cocoa truncate">{c.name} · {c.phone || c.email || "No contact info"}</p>
         </div>
       </div>

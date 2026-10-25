@@ -37,7 +37,7 @@ function BenchView() {
       <PageTitle eyebrow="Contractors" title="Bench" sub="Ranked backups for every property and amenity. Scores come from real outcomes.">
         <button className="btn btn-secondary" onClick={() => setAdding({})} data-testid="bench-add-contractor-button">+ Add contractor</button>
       </PageTitle>
-      <div className="flex gap-2 overflow-x-auto mb-6" role="tablist">
+      <div className="flex flex-wrap gap-2 mb-6" role="tablist">
         {TABS.map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
             className={`min-h-[44px] px-4 rounded-btn font-semibold border-[1.5px] whitespace-nowrap transition-colors duration-150 ${tab === k ? "bg-white border-line text-espresso" : "border-transparent text-cocoa hover:text-espresso"}`}
