@@ -700,9 +700,11 @@ app.include_router(api)
 
 import bench_routes  # noqa: E402
 import outcome_routes  # noqa: E402
+import directory_routes  # noqa: E402
 
 app.include_router(bench_routes.router)
 app.include_router(outcome_routes.router)
+app.include_router(directory_routes.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in os.environ["FRONTEND_URL"].split(",")],
