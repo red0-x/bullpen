@@ -51,3 +51,9 @@ See /app/memory/test_credentials.md
 - Rentals tab: a setup card links back to continue setup or manage rooms later.
 - Files and photos go to Emergent object storage (/api/upload, /api/files/...). On web, the token is passed as ?token= so images load.
 - AR only works in a native build. Web and Expo Go show the photo fallback.
+
+## 2026-06: Fix for the Expo Go report "can't set up property, camera won't turn on"
+- The address step no longer dead-ends. If the Google lookup fails, "Save as typed" stores the property with geocode {verified:false}: no map pin, and Review shows a "No map pin yet" badge. The backend validates types: unverified must be exactly true, numbers can't be booleans, text fields are coerced.
+- Camera: added an in-app live camera (expo-camera CameraView, src/onboarding/LiveCamera.tsx) for room photos. It works in Expo Go, native builds and on the web, takes several shots in a row, and handles permissions in-modal, with Settings when blocked.
+- iOS modal timing: on iOS, the picker, camera and AR open after the closing modal's onDismiss; other platforms wait 250ms. This uses useAfterDismiss in useCameraGate.tsx, and Sheet now has an onDismiss prop. The Snap tab now waits 500ms after its permission sheet.
+- Google: Geocoding API and Maps Static API are still off in the user's Google Cloud project.

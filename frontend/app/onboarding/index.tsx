@@ -28,6 +28,7 @@ export default function AddressStep() {
   const [busy, setBusy] = useState<"" | "find" | "save" | "skip">("");
   const [error, setError] = useState("");
   const [skipOpen, setSkipOpen] = useState(false);
+  const [lookupFailed, setLookupFailed] = useState(false); // Google couldn't check it -> allow saving as typed
   const prefilled = useRef(false);
   const revisit = !!user && !needsOnboarding(user);
 
@@ -39,6 +40,7 @@ export default function AddressStep() {
     setQ(p.address);
     setName(p.name || "");
     if (p.geocode?.lat != null) setPicked({ ...p.geocode, formatted_address: p.address });
+    else setLookupFailed(true);
   }, [state?.property]);
 
   const onType = (v: string) => {
@@ -53,21 +55,24 @@ export default function AddressStep() {
     setError("");
     setResults(null);
     setPicked(null);
+    setLookupFailed(false);
     try {
       const r = await api<{ results: Geo[] }>("/onboarding/geocode", { method: "POST", body: { address: q.trim() } });
       setResults(r.results);
       if (r.results.length === 1) pick(r.results[0]);
-    } catch (e) { setError(errorText(e)); } finally { setBusy(""); }
+    } catch (e) { setError(errorText(e)); setLookupFailed(true); } finally { setBusy(""); }
   };
 
   const pick = (g: Geo) => { setPicked(g); setQ(g.formatted_address); };
 
-  const save = async () => {
-    if (!picked) return;
+  const save = async (asTyped = false) => {
+    if (!picked && !asTyped) return;
     setBusy("save");
     setError("");
     try {
-      await api("/onboarding/property", { method: "POST", body: { name: name.trim(), address: picked.formatted_address, geocode: picked } });
+      await api("/onboarding/property", { method: "POST", body: asTyped
+        ? { name: name.trim(), address: q.trim(), geocode: { unverified: true } }
+        : { name: name.trim(), address: picked!.formatted_address, geocode: picked } });
       router.push("/onboarding/rooms");
     } catch (e) { setError(errorText(e)); } finally { setBusy(""); }
   };
@@ -93,7 +98,13 @@ export default function AddressStep() {
           textContentType="fullStreetAddress" returnKeyType="search" onSubmitEditing={find} maxLength={300} testID="address-input" />
         <Field label="Nickname (optional)" value={name} onChangeText={setName} placeholder="Lake cabin" maxLength={80} testID="property-name-input" />
         {!!error && <Notice testID="address-error">{error}</Notice>}
-        <Btn label="Find address" icon="search" busy={busy === "find"} disabled={!!busy || q.trim().length < 5} variant={picked ? "secondary" : "primary"} onPress={find} testID="address-find-button" />
+        <Btn label="Find address" icon="search" busy={busy === "find"} disabled={!!busy || q.trim().length < 5} variant={picked || lookupFailed ? "secondary" : "primary"} onPress={find} testID="address-find-button" />
+        {lookupFailed && !picked && q.trim().length >= 5 && (
+          <Animated.View entering={FadeInDown.springify().damping(16)} style={{ gap: 8 }} testID="address-as-typed">
+            <Btn big label="Save as typed" icon="arrow-right" busy={busy === "save"} disabled={!!busy} onPress={() => save(true)} testID="address-save-typed-button" />
+            <T size={13} muted style={{ textAlign: "center" }}>It won&apos;t have a map pin yet. You can look it up again later.</T>
+          </Animated.View>
+        )}
       </Card>
 
       {results && results.length > 1 && (
@@ -130,7 +141,7 @@ export default function AddressStep() {
             {picked.partial_match
               ? <Notice>Close match only. Double-check the street number and zip.</Notice>
               : picked.location_type === "ROOFTOP" && <Badge kind="ready" icon="circle-check" label="Exact spot found" />}
-            <Btn big label="Use this address" icon="arrow-right" busy={busy === "save"} disabled={!!busy} onPress={save} testID="address-confirm-button" />
+            <Btn big label="Use this address" icon="arrow-right" busy={busy === "save"} disabled={!!busy} onPress={() => save()} testID="address-confirm-button" />
           </Card>
         </Animated.View>
       )}

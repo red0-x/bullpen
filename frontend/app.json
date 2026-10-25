@@ -49,6 +49,13 @@
       "expo-web-browser",
       "expo-status-bar",
       "@react-native-vector-icons/lucide",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Photograph rooms to tag appliances",
+          "recordAudioAndroid": false
+        }
+      ],
       "expo-roomplan",
       [
         "munim-xr",

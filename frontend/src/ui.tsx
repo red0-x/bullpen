@@ -241,12 +241,12 @@ export function EmptyState({ pose = "glove", motion = "bob", title, body, childr
 }
 
 // ---------- Bottom sheet ----------
-export function Sheet({ open, onClose, title, sub, children, testID }: { open: boolean; onClose: () => void; title: string; sub?: string; children: ReactNode; testID?: string }) {
+export function Sheet({ open, onClose, onDismiss, title, sub, children, testID }: { open: boolean; onClose: () => void; onDismiss?: () => void; title: string; sub?: string; children: ReactNode; testID?: string }) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const s = useMiscStyles();
   return (
-    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose} onDismiss={onDismiss} statusBarTranslucent>
       <View style={s.overlay}>
         <Pressable style={{ flex: 1 }} onPress={onClose} testID={testID ? `${testID}-backdrop` : undefined} />
         <View style={[s.sheet, { paddingBottom: insets.bottom + 16, maxHeight: "92%" }]} testID={testID}>

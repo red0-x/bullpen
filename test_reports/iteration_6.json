@@ -1,0 +1,32 @@
+{
+  "summary": "Retest of the iteration 5 follow-ups. All requested items pass. Backend: 52 of 54 pytest tests pass (new test_onboarding_iter6.py plus the onboarding regression files). The 2 failures are extra robustness probes that fall outside the requested scope. Property save hardening is verified. {lat:true,lng:false} -> 400; with unverified:true it saves as {verified:false}; a mixed bool/number pin -> 400. 'no', 1, 'true', 'yes', 0, null and [] as unverified -> 400 each. A whitespace-only address -> 400; '   ab   ' -> 400 'Type the full street address.'. Address '   , Reno NV' with name '   ' -> name 'My rental' and stored address ', Reno NV'. '  42 Elm St , Reno, NV  ' -> name '42 Elm St'. The nickname is trimmed. The 503 copy reads exactly 'Address lookup isn't switched on yet. You can save the address as typed.' UI at 390x844: the address error copy is correct. address-save-typed-button reads 'Save as typed' and is not truncated (text 137px inside a 308px button, scrollWidth == clientWidth). It sent geocode {unverified:true} and opened /rooms. Without camera permission, live-camera-permission -> live-camera-upload-button closed the modal and opened a multi-select file chooser; kitchen.jpg uploaded and the toast read 'Photo saved. Check what Bullpen spotted below.' with room-suggestions shown. With the fake camera, live-camera-gallery-button closed the camera (no video element left) and opened a multi-select chooser. fakecam.jpg uploaded with the toast 'Photo saved. Nothing spotted automatically, so tap a photo to tag items.' Two shutter shots -> 'Use 2' (the gallery button is hidden after the first shot) -> toast '2 photos saved. Nothing spotted…' and room-photos showed 3 images. Room done -> rooms -> review showed review-unverified-badge; Finish -> onboarding-celebrate, and the backend has onboarding_complete:true. These sheets still open and close normally: skip-sheet (close button), add-room-sheet (backdrop, then reopen and confirm), item-sheet (close) and edit-room-sheet (close). Demo login redirects to /onboarding and its onboarding flags are still unset.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/onboarding/property", "issue": "A geocode 'street' that is not a string (e.g. {lat:39.5,lng:-119.8,street:5}) -> 500 AttributeError: 'int' object has no attribute 'strip' (onboarding_routes.py:283). Guard it with isinstance(str)."},
+      {"endpoint": "POST /api/onboarding/property", "issue": "A geocode 'city' that is not a string (e.g. 123) on a new user -> 500 pydantic ValidationError for Property (city = g.get('city') or ''). Also, city is taken from the raw geocode even for unverified saves, so a client can store a junk city without a pin. Use a Pydantic GeocodeIn model (lat/lng: float with strict bool rejection, str fields with max_length)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_onboarding_iter6.py", "/app/test_reports/pytest/pytest_onboarding_iter6.xml"],
+  "action_items": [
+    "LOW: In save_property, type-check the geocode string fields (street/city/state/...) or replace `geocode: dict` with a Pydantic model so junk types return 400/422 instead of 500. Ref: /app/backend/onboarding_routes.py:283-284."
+  ],
+  "critical_code_review_comments": [
+    "useAfterDismiss: iOS queues the action until Modal onDismiss fires; other platforms use setTimeout(250). LiveCamera queues before onClose() and Sheet forwards onDismiss, so this is correct. Note that Android Modal never relies on onDismiss here, which is good. Native iOS timing was not exercised; the web only covers the 250ms path.",
+    "useCameraGate allow(): after a granted system prompt the action is queued and the sheet closes, then the action launches in onDismiss. The Open Settings path doesn't queue anything, which is fine. A stale queued fn is cleared on every dismiss.",
+    "No deprecated expo packages were found (expo-camera CameraView, expo-image-picker)."
+  ],
+  "updated_files": ["/app/backend/tests/test_onboarding_iter6.py (new)"],
+  "success_rate": {"backend": "96% (52/54; the 2 failures are out-of-scope junk-type robustness probes)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Created test_ob_* and test_obui6_* users. All of them (30 users plus their properties, rooms, items and files) were deleted via /tmp/ob/cleanup5.py. The demo host was only logged in.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "To launch the fake-camera browser: b2 = await page.context.browser.browser_type.launch(args=['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']); then grant_permissions(['camera']). After login, a seeded user lands on /onboarding (not /onboarding/), so use wait_for_url('**/onboarding**'). /tmp/ob/kitchen.jpg gives AI suggestions and /tmp/ob/fakecam.jpg gives 0. Clean up with /tmp/ob/cleanup5.py.",
+  "rca_of_issue": "The 500s come from save_property trusting the raw geocode dict: `(g.get('street') or '').strip()` and `Property(city=g.get('city'))` assume the values are strings."
+}

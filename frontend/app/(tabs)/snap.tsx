@@ -50,7 +50,7 @@ function Capture({ onPhoto, onText }: { onPhoto: (p: Photo) => void; onText: (t:
   };
   const askCamera = async () => {
     const res = await ImagePicker.requestCameraPermissionsAsync();
-    if (res.granted) { setPerm(null); launchCamera(); } else setPerm(res.canAskAgain ? "explain" : "blocked");
+    if (res.granted) { setPerm(null); setTimeout(() => launchCamera().catch(() => toast.error("The camera didn't open. Try again.")), 500); } else setPerm(res.canAskAgain ? "explain" : "blocked");
   };
   const upload = async () => {
     try {

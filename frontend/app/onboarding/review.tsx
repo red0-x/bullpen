@@ -58,6 +58,7 @@ export default function ReviewStep() {
             <View style={{ flex: 1 }}>
               <H size={22} testID="review-property-name">{p.name}</H>
               <T size={14} muted>{p.address}</T>
+              {p.geocode?.verified === false && <Badge icon="map-pin" label="No map pin yet" testID="review-unverified-badge" />}
             </View>
             <Btn variant="link" label="Edit" onPress={() => router.push("/onboarding")} testID="review-edit-address-button" />
           </View>

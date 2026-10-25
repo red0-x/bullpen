@@ -221,7 +221,7 @@ async def geocode(body: GeocodeIn, host: dict = Depends(current_host)):
     if status != "OK":
         log.warning("geocode status %s: %s", status, payload.get("error_message", "")[:200])
         if status == "REQUEST_DENIED":
-            raise HTTPException(503, "Address lookup isn't switched on yet. Try again later, or skip setup for now.")
+            raise HTTPException(503, "Address lookup isn't switched on yet. You can save the address as typed.")
         raise HTTPException(502, "Address lookup returned an error. Try again.")
     out = []
     for res in payload["results"][:3]:
@@ -268,16 +268,31 @@ async def static_map(lat: float = Query(..., ge=-90, le=90), lng: float = Query(
 @router.post("/onboarding/property")
 async def save_property(body: PropertyIn, host: dict = Depends(current_host)):
     g = body.geocode
-    if not isinstance(g.get("lat"), (int, float)) or not isinstance(g.get("lng"), (int, float)):
+    address = body.address.strip()
+    if len(address) < 5:
+        raise HTTPException(400, "Type the full street address.")
+    lat, lng = g.get("lat"), g.get("lng")
+    is_num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)  # noqa: E731
+    has_pin = is_num(lat) and is_num(lng)
+    # Verified = picked from Google results. If lookup is down, the host may save the address as typed (no map pin).
+    if not has_pin and g.get("unverified") is not True:
         raise HTTPException(400, "Look up the address first.")
-    geo = {k: g.get(k) for k in ("lat", "lng", "place_id", "location_type", "city", "state", "postal_code", "country", "partial_match")}
-    name = body.name.strip() or g.get("street") or body.address.split(",")[0]
-    city = g.get("city") or ""
+    if has_pin and not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        raise HTTPException(400, "That map location isn't valid.")
+    geo = {k: g.get(k) for k in ("lat", "lng", "place_id", "location_type", "city", "state", "postal_code", "country", "partial_match")} if has_pin else {}
+    geo["verified"] = has_pin
+    txt = lambda v: v.strip()[:120] if isinstance(v, str) else ""  # noqa: E731 — geocode is client-sent; never trust its types
+    name = body.name.strip() or txt(g.get("street")) or address.split(",")[0].strip() or "My rental"
+    city = txt(g.get("city")) if has_pin else ""
+    if has_pin:
+        for k in ("place_id", "location_type", "city", "state", "postal_code", "country"):
+            geo[k] = txt(g.get(k)) or None
+        geo["partial_match"] = g.get("partial_match") is True
     existing = await onboarding_property(host["id"])
     if existing:
-        await db.properties.update_one({"id": existing["id"]}, {"$set": {"name": name, "address": body.address, "city": city, "geocode": geo}})
+        await db.properties.update_one({"id": existing["id"]}, {"$set": {"name": name, "address": address, "city": city, "geocode": geo}})
         return ser(await onboarding_property(host["id"]))
-    prop = Property(host_id=host["id"], name=name, city=city, address=body.address, geocode=geo, onboarding=True)
+    prop = Property(host_id=host["id"], name=name, city=city, address=address, geocode=geo, onboarding=True)
     await db.properties.insert_one(prop.model_dump())
     return ser(prop.model_dump())
 

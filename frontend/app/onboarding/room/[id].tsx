@@ -13,6 +13,7 @@ import type { ArSupport, ScanResult } from "@/src/ar/types";
 import { Screen } from "@/src/components/Screen";
 import { ItemRow } from "@/src/onboarding/ItemRow";
 import { ItemSheet } from "@/src/onboarding/ItemSheet";
+import { LiveCamera } from "@/src/onboarding/LiveCamera";
 import { PhotoTagger } from "@/src/onboarding/PhotoTagger";
 import { Frame, ItemDraft, itemIcon, mergeSuggestions, Room, ROOM_TYPES, roomMeta, roomTitle, sqft, Suggestion, uploadFile, uploadPhoto } from "@/src/onboarding/shared";
 import { useCameraGate } from "@/src/onboarding/useCameraGate";
@@ -35,6 +36,7 @@ export default function RoomCapture() {
   const [draft, setDraft] = useState<ItemDraft | null>(null);
   const [tagFrame, setTagFrame] = useState<Frame | null>(null);
   const [editing, setEditing] = useState<{ type: string; label: string } | null>(null);
+  const [liveCam, setLiveCam] = useState(false);
 
   const load = useCallback(async () => {
     try { setRoom(await api<Room>(`/onboarding/rooms/${id}`)); setError(""); } catch (e) { setError(errorText(e)); }
@@ -77,17 +79,15 @@ export default function RoomCapture() {
           source: cur?.source || "photo", photo_url: (cur as any)?.photo_url || fresh[0].url,
         } } });
       }
+      const spotted = !!(sg?.ok && sg.items?.length);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      toast.success(fresh.length > 1 ? `${fresh.length} photos saved. Tap one to tag items.` : "Photo saved. Tap it to tag items.");
+      const saved = fresh.length > 1 ? `${fresh.length} photos saved.` : "Photo saved.";
+      toast.success(spotted ? `${saved} Check what Bullpen spotted below.` : `${saved} Nothing spotted automatically, so tap a photo to tag items.`);
     } catch (e) { toast.error(errorText(e)); } finally { setWorking(""); }
   };
 
-  const takePhoto = () => camera.ensure(async () => {
-    try {
-      const r = await ImagePicker.launchCameraAsync({ quality: 0.85 });
-      if (!r.canceled) addFrames(r.assets.map((a) => a.uri));
-    } catch { toast.error("The camera isn't available here. Upload photos instead."); }
-  }, "Bullpen uses the camera to photograph each room and spot the appliances in it.");
+  // In-app live camera: no system picker, so nothing can block it from opening.
+  const takePhoto = () => setLiveCam(true);
 
   // Walkthrough video -> four still frames, treated like photos.
   const recordVideo = () => camera.ensure(async () => {
@@ -329,6 +329,8 @@ export default function RoomCapture() {
       <RoomScanner open={!!scanner} mode={scanner || "xr"} roomType={room.type} scanName={`room-${room.id.slice(0, 8)}`} xrOk={!!support?.xr}
         onClose={(m) => { setScanner(null); if (m) toast(m); }} onDone={onScan} />
       {camera.sheet}
+      <LiveCamera open={liveCam} title={`Snap the ${roomTitle(room).toLowerCase()}`} onClose={() => setLiveCam(false)}
+        onDone={(uris) => { setLiveCam(false); addFrames(uris); }} onUpload={pickPhotos} />
       <Sheet open={!!editing} onClose={() => setEditing(null)} title="Edit room" testID="edit-room-sheet">
         <ChipWrap testID="edit-room-types">
           {ROOM_TYPES.map((t) => <Chip key={t.type} label={t.label} on={editing?.type === t.type} onPress={() => setEditing((e) => e && { ...e, type: t.type })} testID={`edit-room-type-${t.type.replace(/\s+/g, "-")}`} />)}

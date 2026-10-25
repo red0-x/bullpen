@@ -1,0 +1,41 @@
+{
+  "summary": "Retest of the user's Expo Go bug: the address step was blocked and the camera would not turn on. Both fixes work end-to-end on the web preview. Backend: 35/35 pytest pass (9 new tests in test_onboarding_unverified.py plus 26 regression tests). Geocode really does return 503 'Address lookup isn't switched on yet…'. Property save results: geocode {} -> 400; {unverified:false} -> 400; lat 200 or lng -181 -> 400; {unverified:true} -> 200 with geocode exactly {verified:false}, the name defaulted to '123 Lakeview Dr' and junk keys stripped; valid lat/lng -> 200 verified:true, upserted onto the same property; an unverified property can finish onboarding. BUG FIX 1 (UI, 390x844): fresh account -> address-find-button -> address-error shown along with address-as-typed / address-save-typed-button. Tapping it sent POST {name:'', address, geocode:{unverified:true}} and opened /onboarding/rooms. Going back via Edit prefilled the address and nickname, and the save-as-typed button was visible again. Review shows review-unverified-badge 'No map pin yet', there is no review-map, and Finish -> celebrate -> tabs worked. BUG FIX 2: Chromium was launched with --use-fake-ui-for-media-stream --use-fake-device-for-media-stream and camera permission granted. room-take-photo-button opened testID live-camera with a live 640x480 video and the title 'Snap the kitchen'. Two shutter taps produced a thumbnail strip and live-camera-done-button 'Use 2'. After tapping it, the modal closed, room-working showed, both photos uploaded (stored as 640x480 JPEGs) and room-photos showed 2 frames. AI suggest returned 0 items, which is expected because the fake camera shows a test pattern. The gallery button disappears after the first shot. live-camera-close-button closes the modal and the video element is removed. live-camera-gallery-button closes the camera and opens a multi-select file chooser. Without permission (default context): live-camera-permission showed with live-camera-allow-button and live-camera-upload-button. Close works. Upload-instead opened the file chooser, and kitchen.jpg uploaded with 6 AI suggestions. Allow -> live camera. Regression passed: single add, Add all (6 items), the photo tagger opens, Room done -> rooms, and review shows 1 room / 6 items / 3 appliances. Demo login redirects to /onboarding, and the demo account's onboarding flags are still unset (not skipped or completed).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/onboarding/property", "issue": "has_pin uses isinstance(x,(int,float)), which also accepts booleans: geocode {lat:true,lng:false} -> 200 verified:true with lat=True stored. Exclude bool (and ideally use a Pydantic model for geocode instead of a raw dict)."},
+      {"endpoint": "POST /api/onboarding/property", "issue": "address/name are not stripped before validation or defaulting: address '   , Reno' passes min_length=5 and the property name defaults to '   ' (blank). The truthiness check also accepts any value for 'unverified' (e.g. 'no' or 1 -> unverified save)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Address step (390px)", "issues": ["The 'Save address as typed' big button label is truncated to 'Save address as t…' (address-save-typed-button). Shorten it to 'Save as typed' or let it wrap.", "The 503 error copy still says 'Try again later, or skip setup for now.' even though a 'Save address as typed' button now appears right below it. Update the backend message to mention saving it as typed."]},
+      {"screen": "Live camera (web)", "issues": ["On web the preview is mirrored (front webcam) but the saved photo is not. This is cosmetic only."]},
+      {"screen": "Room capture", "issues": ["When AI suggest returns 0 items after a camera shot, the only feedback is the 'photos saved' toast. Consider a hint like 'No appliances spotted, tap a photo to tag by hand'."]}
+    ],
+    "react_native_issues": [
+      {"component": "LiveCamera upload/gallery hand-off timing", "issue": "On close, the camera calls onClose() then setTimeout(onUpload, 450) to launch ImagePicker.launchImageLibraryAsync. The camera is a fullScreen slide Modal, so on iOS 450ms may still overlap the dismiss animation. That is the same class of bug as the original 'camera won't open' (the picker silently fails while a modal dismisses). It could not be exercised on web. Reference: /app/frontend/src/onboarding/LiveCamera.tsx:73 and :105"}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_onboarding_unverified.py", "/app/backend/tests/test_onboarding.py", "/app/backend/tests/test_onboarding_fixes.py", "/app/test_reports/pytest/pytest_onboarding_iter5.xml"],
+  "action_items": [
+    "MEDIUM (native iOS only): In LiveCamera, launch the upload picker from the Modal's onDismiss (iOS) instead of a fixed 450ms setTimeout, or keep a >=600ms delay. Ref: /app/frontend/src/onboarding/LiveCamera.tsx:73,105. The same applies to useCameraGate (500ms) and snap.tsx askCamera (500ms) if issues persist on device; onDismiss is the deterministic hook.",
+    "LOW: Shorten the 'Save address as typed' label (truncated at 390px) and update the REQUEST_DENIED 503 message (onboarding_routes.py:224) so it points to saving the address as typed instead of skipping.",
+    "LOW: In save_property, reject bool lat/lng (isinstance(x,bool)), strip address/name before validating and defaulting, and require unverified is True. Ref: /app/backend/onboarding_routes.py:270-280"
+  ],
+  "critical_code_review_comments": [
+    "useCameraGate.allow now clears the sheet and runs then() after 500ms, and snap.tsx askCamera does the same. This is correct in intent. onDismiss would be more robust than a timer.",
+    "takePhoto no longer goes through useCameraGate. LiveCamera handles its own permission states (loading / explain / blocked->Open Settings). This is good, and the Expo Go path no longer depends on ImagePicker.launchCameraAsync.",
+    "The address step's lookupFailed is also set on 422 ZERO_RESULTS, so a 'not found' address can be saved as typed too. This is acceptable as a fallback, but be aware of it.",
+    "No deprecated packages (expo-av / expo-barcode-scanner / expo-background-fetch) found. expo-camera ~58 is used with the CameraView API."
+  ],
+  "updated_files": ["/app/backend/tests/test_onboarding_unverified.py (new)"],
+  "success_rate": {"backend": "100% (35/35)", "frontend": "100% of requested flows verified (camera shutter flow exercised with a fake media device)"},
+  "seed_data_creation": "Created test_ob_*/test_obui5_*/test_ob5e_* users with properties, rooms, items and files. All 13 users and their data were deleted from Mongo afterwards (/tmp/ob/cleanup5.py). The demo host was only logged in: redirect to /onboarding verified, flags unset.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "To exercise the live camera, launch a second browser from the tool: b2 = await page.context.browser.browser_type.launch(args=['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']); ctx = await b2.new_context(...); await ctx.grant_permissions(['camera'], origin=BASE). Wait about 1.5s after opening the LiveCamera modal (slide animation) before clicking its bottom buttons, otherwise you get 'Element is outside of the viewport'. Log in via /login (the root URL shows the landing page). Fake-camera frames give 0 AI suggestions; use /tmp/ob/kitchen.jpg via Upload for suggestions. Clean up with /tmp/ob/cleanup5.py.",
+  "rca_of_issue": "Fix 1: when geocoding is REQUEST_DENIED, the frontend now sets lookupFailed and offers 'save as typed' (geocode {unverified:true} -> stored {verified:false}). Verified end-to-end. Fix 2: the room Camera button now opens an in-app expo-camera CameraView modal instead of ImagePicker.launchCameraAsync, so no system picker needs to be presented right after the permission sheet closes. Verified on web with a fake device. Behaviour on a real device in Expo Go was not tested here."
+}
