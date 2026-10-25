@@ -75,7 +75,8 @@ async def diagnose(note: str, image_b64: str | None, properties: list, trades: l
         "diy ('yes' if a host can fix it alone safely, 'maybe', or 'no' if it needs a pro), "
         "trade (one of the allowed trades or null), "
         "urgency ('today' | 'this_week' | 'can_wait'; today if guests arrive within ~48h or it's unsafe), "
-        "property_id (best guess from the list or null), amenity_id (best guess or null), "
+        "property_id (only if the note or photo names or clearly points to one property, e.g. 'Tahoe' or 'the A-frame'; "
+        "otherwise null, never guess between properties), amenity_id (best guess within that property, else null), "
         "guest_arrival (ISO 8601 local datetime like 2026-10-30T16:00 if the note mentions arrival, else null)."
     )
     data = _json(await _run(DIAG_SYSTEM, prompt, image_b64))

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Sparkles, TriangleAlert } from "lucide-react";
 import { AmenityPicker } from "./AmenityPicker";
 import { FixGuide } from "./FixGuide";
@@ -17,12 +18,43 @@ function Select({ label, value, onChange, options, testId, placeholder }) {
   );
 }
 
+function WherePicker({ properties, trade, value, onPick, onProperty }) {
+  const [all, setAll] = useState(false);
+  const matches = (p) => p.amenities.filter((a) => all || !trade || a.trade === trade);
+  return (
+    <div className="rounded-[16px] border-[1.5px] border-[#F0C6B5] bg-blush/40 p-4 flex flex-col gap-4" data-testid="review-where-picker">
+      <div>
+        <p className="font-head text-lg text-espresso">Where is it?</p>
+        <p className="text-sm text-cocoa">Tap the spot so Bullpup can find the right people.</p>
+      </div>
+      {properties.map((p) => (
+        <div key={p.id}>
+          <p className="text-sm font-semibold mb-1.5">{p.name}</p>
+          {matches(p).length ? (
+            <AmenityPicker amenities={matches(p)} value={value} onPick={onPick} />
+          ) : (
+            <button type="button" className="chip min-h-[44px] bg-white hover:bg-cream" onClick={() => onProperty(p.id)} data-testid={`review-pick-property-${p.id}`}>
+              Somewhere at {p.name}
+            </button>
+          )}
+        </div>
+      ))}
+      {trade && (
+        <button type="button" className="btn-link self-start" onClick={() => setAll(!all)} data-testid="review-show-all-amenities">
+          {all ? `Only show ${trade.toLowerCase()} spots` : "Show every amenity"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function ReviewStep({ draft, setDraft, notice, properties, trades, photo, onConfirm, onBack, busy }) {
   const prop = properties.find((p) => p.id === draft.property_id);
   const amenities = prop?.amenities || [];
   const set = (patch) => setDraft({ ...draft, ...patch });
   const pickAmenity = (a) => set({ amenity_id: a.id, trade: a.trade, property_id: a.property_id });
   const ready = draft.property_id && draft.trade && draft.urgency;
+  const missing = [!draft.property_id && "where it is", !draft.trade && "the trade", !draft.urgency && "how urgent"].filter(Boolean);
 
   return (
     <div className="grid lg:grid-cols-[0.8fr_1.2fr] gap-6" data-testid="review-step">
@@ -76,18 +108,17 @@ export function ReviewStep({ draft, setDraft, notice, properties, trades, photo,
             <AmenityPicker amenities={amenities} value={draft.amenity_id} onPick={pickAmenity} />
           </div>
         ) : (
-          properties.map((p) => (
-            <div key={p.id}>
-              <p className="text-sm font-semibold mb-1.5">{p.name}</p>
-              <AmenityPicker amenities={p.amenities} value={draft.amenity_id} onPick={pickAmenity} />
-            </div>
-          ))
+          <WherePicker properties={properties} trade={draft.trade} value={draft.amenity_id} onPick={pickAmenity}
+            onProperty={(id) => set({ property_id: id, amenity_id: null })} />
         )}
-        <div className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end pt-2">
+        <div className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end sm:items-center pt-2">
           <button className="btn btn-secondary" onClick={onBack} data-testid="review-back-button">Start over</button>
           <button className="btn btn-primary" disabled={!ready || busy} onClick={onConfirm} data-testid="review-confirm-button">
             {busy ? "Saving…" : "Looks right, find help"}
           </button>
+          {missing.length > 0 && (
+            <p className="text-sm font-semibold text-blush-ink sm:order-first sm:mr-auto" data-testid="review-missing-hint">Pick {missing.join(", ")} to continue.</p>
+          )}
         </div>
       </div>
     </div>

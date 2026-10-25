@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-25 — Fix: stuck on "Looks right, find help"
+### Fixed
+- When the AI couldn't tell which property a photo was from, the confirm button stayed greyed out with no explanation. A "Where is it?" box now shows the matching spots at each property (for example Plumbing at Tahoe, Joshua Tree and Oakland). One tap picks the property and amenity together. "Show every amenity" reveals the rest, and a hint says what's still missing.
+- The AI no longer guesses a property unless the photo or note points to one.
+- Long amenity names (for example "Kitchen appliances") no longer get cut off in the picker.
+
 ## 2026-10-25 — Camera finished + Layers 2, 4, 5, 6
 ### Added
 - Live camera: "Snap a photo" opens a real viewfinder on phones and computers (webcam), with a shutter, a switch-camera button and a retake. If the camera is blocked or missing, the phone's own camera or the upload picker opens instead.

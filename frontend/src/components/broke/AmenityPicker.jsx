@@ -23,7 +23,7 @@ export function AmenityPicker({ amenities, value, onPick }) {
               <AmenityIcon type={a.type} />
             </span>
             <span className="min-w-0">
-              <span className="block font-semibold text-espresso leading-tight truncate">{a.label}</span>
+              <span className="block font-semibold text-espresso leading-tight hyphens-auto">{a.label}</span>
               <span className="block text-xs text-cocoa truncate">{a.trade}</span>
             </span>
           </button>
