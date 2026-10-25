@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Modal, Pressable, View } from "react-native";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withDelay, withTiming, ZoomIn } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { api, errorText } from "@/src/api";
@@ -20,7 +20,8 @@ export default function ReviewStep() {
   const { patchUser } = useAuth();
   const { colors } = useTheme();
   const s = useStyles();
-  const { state, error, load } = useOnboarding();
+  const { pid } = useLocalSearchParams<{ pid?: string }>();
+  const { state, error, load } = useOnboarding(pid || undefined);
   const [draft, setDraft] = useState<{ d: ItemDraft; room: Room } | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -30,11 +31,12 @@ export default function ReviewStep() {
   const rooms = state?.rooms || [];
   const items = rooms.flatMap((r) => r.items);
   const p = state?.property;
+  const first = !!state?.first_setup;
 
   const finish = async () => {
     setBusy(true);
     try {
-      await api("/onboarding/complete", { method: "POST" });
+      await api("/onboarding/complete", { method: "POST", params: { property_id: p?.id } });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setDone(true);
     } catch (e) { toast.error(errorText(e)); } finally { setBusy(false); }
@@ -43,11 +45,12 @@ export default function ReviewStep() {
   const enter = () => {
     setDone(false);
     patchUser({ onboarding_complete: true });
-    router.replace("/(tabs)");
+    if (first) router.replace("/(tabs)");
+    else router.dismissTo("/(tabs)/properties"); // pop the setup screens instead of stacking a second Rentals
   };
 
   return (
-    <Screen back eyebrow="Set up · Step 3 of 3" title="Look it over" sub="Fix anything that's off. You can add more any time." onRefresh={load} testID="onboarding-review">
+    <Screen back eyebrow={`${first ? "Set up" : p?.name || "Rental"} · Step 3 of 3`} title="Look it over" sub="Fix anything that's off. You can add more any time." onRefresh={load} testID="onboarding-review">
       <Steps step={2} />
       {!!error && <Notice testID="review-error">{error}</Notice>}
       {!state && !error && <Skeleton height={240} testID="review-loading" />}
@@ -60,7 +63,7 @@ export default function ReviewStep() {
               <T size={14} muted>{p.address}</T>
               {p.geocode?.verified === false && <Badge icon="map-pin" label="No map pin yet" testID="review-unverified-badge" />}
             </View>
-            <Btn variant="link" label="Edit" onPress={() => router.push("/onboarding")} testID="review-edit-address-button" />
+            <Btn variant="link" label="Edit" onPress={() => router.push(`/onboarding?pid=${p.id}`)} testID="review-edit-address-button" />
           </View>
         </Card>
       )}
@@ -93,11 +96,11 @@ export default function ReviewStep() {
       {state && (
         <View style={{ gap: 12, marginTop: 8 }}>
           <Btn big label={state.complete ? "Save & close" : "Finish setup"} icon="party-popper" busy={busy} onPress={finish} testID="review-finish-button" />
-          <Btn variant="link" label="Add more rooms" onPress={() => (router.canGoBack() ? router.back() : router.replace("/onboarding/rooms"))} style={{ alignSelf: "center" }} testID="review-more-rooms-button" />
+          <Btn variant="link" label="Add more rooms" onPress={() => (router.canGoBack() ? router.back() : router.replace(`/onboarding/rooms?pid=${p?.id}`))} style={{ alignSelf: "center" }} testID="review-more-rooms-button" />
         </View>
       )}
       <ItemSheet draft={draft?.d || null} roomType={draft?.room.type || "other"} roomName={draft ? roomTitle(draft.room) : undefined} onClose={() => setDraft(null)} onSaved={load} />
-      <Celebrate open={done} name={p?.name || "Your rental"} rooms={rooms.length} items={items.length} onGo={enter} />
+      <Celebrate open={done} name={p?.name || "Your rental"} rooms={rooms.length} items={items.length} onGo={enter} cta={first ? "Open Bullpen" : "Back to rentals"} />
     </Screen>
   );
 }
@@ -116,7 +119,7 @@ function StatTile({ value, label, icon, delay }: { value: number; label: string;
 
 const BURST = 14;
 
-function Celebrate({ open, name, rooms, items, onGo }: { open: boolean; name: string; rooms: number; items: number; onGo: () => void }) {
+function Celebrate({ open, name, rooms, items, onGo, cta }: { open: boolean; name: string; rooms: number; items: number; onGo: () => void; cta: string }) {
   const s = useStyles();
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onGo} statusBarTranslucent>
@@ -131,7 +134,7 @@ function Celebrate({ open, name, rooms, items, onGo }: { open: boolean; name: st
             {name} is ready{rooms ? ` with ${rooms} ${rooms === 1 ? "room" : "rooms"} and ${items} tagged ${items === 1 ? "item" : "items"}` : ""}. When something breaks, Bullpen already knows what&apos;s there.
           </T>
           <Animated.View entering={FadeIn.delay(500)} style={{ alignSelf: "stretch" }}>
-            <Btn big label="Open Bullpen" icon="arrow-right" onPress={onGo} testID="onboarding-enter-app-button" />
+            <Btn big label={cta} icon="arrow-right" onPress={onGo} testID="onboarding-enter-app-button" />
           </Animated.View>
         </Animated.View>
       </View>

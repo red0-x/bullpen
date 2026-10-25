@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend retest of the Bench focus fix at a 375x667 mobile viewport. FIXED, both cases pass. Case 1: tap the Oakland amenity tile, then the Tahoe chip, then reload. Bench stays on Tahoe and last_property stays Tahoe; ?focus= is cleared from the URL. Case 2: tap the Oakland tile, pick Tahoe, then tap the same Oakland tile again. Bench switches to Oakland and slot-<amenity> is shown with the brand-colored highlight border. Passed 3 out of 3 extra loops. Also verified: (1) a manual pick survives switching tabs and coming back; (2) 'All rentals' survives tab switches and reloads; (3) a tile tapped while on All keeps All; (4) chips expose aria-selected=true/false on web; (5) a rental with no city shows '500 Lake Rd, Reno, NV' under its name. Regression OK: Snap opens on the last-used rental (Lake cabin), and 'Is it this one?' shows 'Samsung RF28R7351SR refrigerator · Kitchen'; Rentals tile navigation works. One check failed on web only: chip hitSlop does nothing on web (clicks 4px above or below the 36px chip don't register). Native should honor it.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Bench", "issues": [
+        "After a tile tap switches to Oakland Duplex (the 3rd chip), the selected chip is cut off at the right edge of the ChipRow ('Oak...'). Consider scrolling the selected chip into view.",
+        "Tapping an amenity tile while 'All rentals' is selected keeps All, but the target slot stays about 4700px down the page and is not scrolled into view (carried over)."
+      ]}
+    ],
+    "react_native_issues": [
+      {"component": "Chip hitSlop on web", "issue": "react-native-web Pressable ignores hitSlop, so on web the tappable area is still 36px high (clicks 4px outside do nothing). Fine on native. To get 44px on web too, use height 44 or vertical padding instead. Reference: /app/frontend/src/ui.tsx:154-155"}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/seed_ui_iter8.py"],
+  "action_items": [
+    "Optional: make Chip 44px tall (or add padding) so the touch target is 44px on web too; hitSlop only works on native.",
+    "Optional: scroll the selected rental chip into view in bench-rental-select, and scroll to the highlighted slot when coming from a tile."
+  ],
+  "critical_code_review_comments": [
+    "bench.tsx:40-47: highlight is never cleared. After a manual chip switch and a later visit to Oakland, the old amenity still has the brand border. This is minor and arguably intended.",
+    "bench.tsx:31: useFocusEffect's async getLastRental().then(setSel) could in theory race with the focus effect's choose(). No race was seen in 4 retap cycles because setLastRental writes before the next focus."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not run (73/73 in iter 8)", "frontend": "11/12 checks passed (only chip hitSlop on web failed)"},
+  "seed_data_creation": "seed_ui_iter8.py created host A (demo data) and host B (2 rentals, Samsung fridge in Lake cabin). Both users and 363 host_id docs were deleted afterwards. Demo host untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Data docs are keyed by host_id (not user_id). To clean up, delete users matching ^test_ui, then delete orphaned host_id docs. Start the browser at /login. Tab testIDs: tab-properties, tab-bench, tab-snap. last_property is stored in localStorage as a JSON string.",
+  "rca_of_issue": "The iter-9 root cause (a stale ?focus= param plus a once-per-value ref) is resolved. The param is now consumed via router.setParams({focus: undefined}), and the highlight is kept in local state."
+}

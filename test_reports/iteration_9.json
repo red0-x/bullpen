@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend retest of the iter-8 Bench focus bug plus small fixes, at a 375x667 mobile viewport. FIXED: leaving the tab and coming back no longer overrides a manual rental pick. Tapping an amenity tile from a different rental switches Bench to that rental, and the 'All rentals' choice sticks. STILL BROKEN (2 cases, same root cause: the ?focus= param is never cleared from the URL): (1) Reloading /bench?focus=<id> resets the useRef, so the focus is applied again. This overrides the manual pick and overwrites the stored last_property. (2) Tapping the SAME amenity tile again after a manual pick does nothing, because appliedFocus.current === params.focus. Bench stays on the other rental and the tapped slot is not shown. Verified working: (a) typed-text Snap with no trade shows 'We couldn't tell what needs fixing...'; (b) bench-no-amenities-<id> card shows for 1-rental and 2-rental hosts; (c) a Rentals card saved as typed shows '500 Lake Rd, Reno, NV' next to the pin icon; default to first rental; 'All rentals' chip; single-rental host sees no chips; Snap 'Is it this one?' shows 'Samsung RF28R7351SR refrigerator · Kitchen' for the fridge in rental 2. NOT WORKING on web: (d) chips render no aria-selected, because react-native-web 0.21 ignores accessibilityState.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Bench focus param: reload", "issue": "Repro: Rentals > tap the Oakland amenity tile (URL becomes /bench?focus=e516...) > tap the Tahoe chip (last_property=Tahoe) > reload the page. Bench comes back on Oakland and last_property is overwritten to Oakland. Cause: appliedFocus is a useRef that resets on remount while the focus param stays in the URL. Reference: /app/frontend/app/(tabs)/bench.tsx:40-46", "testID": "bench-rental-option-<id>", "priority": "MEDIUM"},
+      {"component": "Bench focus param: re-tapping the same tile", "issue": "Repro: tap the Oakland amenity tile > Bench shows Oakland > tap the Tahoe chip > Rentals > tap the SAME Oakland tile again. Bench stays on Tahoe and slot-<OaklandAmenity> is not rendered, so the tap looks dead. Cause: the guard appliedFocus.current === params.focus. Reference: /app/frontend/app/(tabs)/bench.tsx:43", "testID": "amenity-tile-<id>", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Bench", "issues": ["A rental with no city (saved as typed, e.g. Lake cabin) shows an empty muted line under its name (bench.tsx:87 renders p.city only). Use p.city || p.address, like the Rentals card does.", "Chip height is 36px, under the 44px minimum touch target (src/ui.tsx:155). The row is 48px tall, but the tappable Pressable is 36px. Add hitSlop or set height to 44."]}
+    ],
+    "react_native_issues": [
+      {"component": "Chip accessibilityState on web", "issue": "react-native-web 0.21.4 no longer maps accessibilityState. The DOM has role=button but no aria-selected or aria-pressed, so web screen readers and tests can't see which chip is selected. Native is fine. Reference: /app/frontend/src/ui.tsx:154"}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/seed_ui_iter8.py"],
+  "action_items": [
+    "bench.tsx: consume the focus param instead of using a once-per-value ref. When the owner is found: choose(owner.id) (unless shown === 'all'), save the amenity id in local state for the highlight (e.g. setHl(params.focus)), then call router.setParams({ focus: undefined }). Highlight uses hl rather than params.focus. This fixes both the reload override and the dead re-tap.",
+    "ui.tsx Chip: add aria-selected={!!on} (or aria-pressed) next to accessibilityState so web exposes the selected state too.",
+    "bench.tsx:87: show p.city || p.address under the rental name.",
+    "Optional: raise Chip touch target to 44px (height or hitSlop)."
+  ],
+  "critical_code_review_comments": [
+    "bench.tsx:45: when shown === 'all', the focus is silently skipped but still marked as applied. That's fine, but the target slot may be far down the page and is not scrolled into view (carried over from iter 8)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not run (73/73 in iter 8)", "frontend": "10/13 checks passed"},
+  "seed_data_creation": "Created hosts with seed_ui_iter8.py (A = demo data, B = 2 own rentals + Samsung fridge in rental 2) plus a single-rental host C. All 3 test users and 364 related docs deleted afterwards. Demo host untouched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Seed with `cd /app/backend/tests && python seed_ui_iter8.py`. Always start the browser at /login (/bench redirects to welcome when logged out). last_property is in localStorage under key 'last_property' (JSON string). Repros: reload while on /bench?focus=<id> after a manual chip pick, and re-tap the same amenity tile after a manual pick. Clean up with pymongo: delete users whose email matches ^test_ui plus docs by user_id.",
+  "rca_of_issue": "The iter-8 fix keyed 'apply once' on a component ref, but the focus search param stays on the route. A remount (reload) resets the ref, so the stale param wins again. And because the guard compares param values, a deliberate second tap with the same value is ignored. Clearing the param after applying it removes both problems."
+}

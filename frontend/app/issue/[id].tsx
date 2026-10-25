@@ -14,6 +14,7 @@ import { CandidateCard } from "@/src/components/issue/CandidateCard";
 import { RequestSheet } from "@/src/components/issue/RequestSheet";
 import { WaitingPanel } from "@/src/components/issue/WaitingPanel";
 import { HowDidItGo, OutcomeList, RankChanges } from "@/src/components/issue/Outcomes";
+import { itemIcon, itemLabel } from "@/src/onboarding/shared";
 
 const STATUS: Record<string, "warn" | "ready"> = { open: "warn", waiting: "warn", scheduled: "ready", resolved: "ready" };
 
@@ -34,6 +35,12 @@ function IssueHeader({ data }: { data: any }) {
         <Badge label={issue.trade_needed} />
       </View>
       <T muted testID="issue-diagnosis">{issue.ai_diagnosis || issue.host_note}</T>
+      {data.item && (
+        <View style={s.appliance} testID="issue-appliance">
+          <Icon name={itemIcon(data.item.name, data.item.category)} size={16} color={colors.brand} />
+          <T size={14} weight="semi" style={{ flex: 1 }} testID="issue-appliance-label">{itemLabel(data.item)}</T>
+        </View>
+      )}
       <View style={{ gap: 4 }}>
         <View style={s.row}><Icon name="map-pin" size={14} color={colors.muted} /><T size={14} muted style={{ flex: 1 }}>{property.address}</T></View>
         {issue.guest_arrival && <View style={s.row}><Icon name="clock" size={14} color={colors.warning} /><T size={14} weight="semi" style={{ color: colors.warning }}>Guests arrive {fmtWhen(issue.guest_arrival)}</T></View>}
@@ -166,4 +173,5 @@ const useStyles = makeStyles((c) => ({
   back: { width: 44, height: 44, borderRadius: 14, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surfaceSecondary, alignItems: "center", justifyContent: "center" },
   photo: { width: "100%", height: 220, borderRadius: 16, backgroundColor: c.surface },
   row: { flexDirection: "row", alignItems: "center", gap: 6 },
+  appliance: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: c.warningSoft },
 }));

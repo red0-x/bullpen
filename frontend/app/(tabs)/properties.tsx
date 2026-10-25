@@ -70,27 +70,48 @@ function SetupCard({ ob }: { ob: any }) {
   const router = useRouter();
   const { colors } = useTheme();
   const s = useStyles();
-  if (!ob || (ob.complete && !ob.property)) return null;
-  const items = (ob.rooms || []).reduce((n: number, r: any) => n + r.items.length, 0);
-  const pending = !ob.complete;
+  if (!ob || ob.complete) return null;
   return (
-    <Card style={{ gap: 12, backgroundColor: pending ? colors.warningSoft : colors.surfaceSecondary }} testID="setup-card">
+    <Card style={{ gap: 12, backgroundColor: colors.warningSoft }} testID="setup-card">
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <View style={s.setupIcon}><Icon name={pending ? "scan-line" : "cuboid"} size={22} color={colors.brand} /></View>
+        <View style={s.setupIcon}><Icon name="scan-line" size={22} color={colors.brand} /></View>
         <View style={{ flex: 1 }}>
-          <H size={20}>{pending ? "Finish setting up" : ob.property.name}</H>
-          <T size={14} muted>{pending
-            ? "Add your address and scan your rooms so Bullpen knows every appliance."
-            : `${ob.rooms.length} ${ob.rooms.length === 1 ? "room" : "rooms"} · ${items} tagged ${items === 1 ? "item" : "items"}`}</T>
+          <H size={20}>Finish setting up</H>
+          <T size={14} muted>Add your address and scan your rooms so Bullpen knows every appliance.</T>
         </View>
       </View>
-      <Btn label={pending ? "Continue setup" : ob.rooms.length ? "Rooms & appliances" : "Scan your rooms"} icon={pending ? "arrow-right" : "scan-line"}
-        variant={pending ? "primary" : "secondary"} onPress={() => router.push(ob.property ? "/onboarding/rooms" : "/onboarding")} testID="setup-card-button" />
+      <Btn label="Continue setup" icon="arrow-right" onPress={() => router.push(ob.property ? `/onboarding/rooms?pid=${ob.property.id}` : "/onboarding")} testID="setup-card-button" />
     </Card>
   );
 }
 
+// Rooms & appliances + map pin for one rental (any rental, demo ones included).
+function RoomsFooter({ p }: { p: any }) {
+  const router = useRouter();
+  const { colors } = useTheme();
+  const s = useStyles();
+  const tid = `property-card-${p.id}`;
+  return (
+    <View style={s.foot} testID={`${tid}-rooms`}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Icon name="cuboid" size={16} color={colors.brand} />
+        <T size={14} weight="semi" style={{ flex: 1 }} testID={`${tid}-rooms-summary`}>
+          {p.rooms_count ? `${p.rooms_count} ${p.rooms_count === 1 ? "room" : "rooms"} · ${p.items_count} tagged ${p.items_count === 1 ? "item" : "items"}` : "No rooms scanned yet"}
+        </T>
+      </View>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        {p.geocode?.verified === false && (
+          <Btn small variant="secondary" icon="map-pin-plus" label="Pin on map" style={{ flex: 1 }} onPress={() => router.push(`/onboarding?pid=${p.id}&pin=1`)} testID={`${tid}-pin-button`} />
+        )}
+        <Btn small variant="secondary" icon="scan-line" label={p.rooms_count ? "Rooms" : "Scan rooms"} style={{ flex: 1 }}
+          onPress={() => router.push(`/onboarding/rooms?pid=${p.id}`)} testID={`${tid}-rooms-button`} />
+      </View>
+    </View>
+  );
+}
+
 export default function Properties() {
+  const router = useRouter();
   const { colors } = useTheme();
   const s = useStyles();
   const [props, setProps] = useState<any[] | null>(null);
@@ -109,6 +130,7 @@ export default function Properties() {
   return (
     <Screen eyebrow="Your properties" title="Rentals" sub="Every amenity and how many backups you have for it." onRefresh={refresh} testID="properties-list">
         <SetupCard ob={ob} />
+        <Btn big label="Add a rental" icon="house-plus" onPress={() => router.push("/onboarding?new=1")} testID="add-rental-button" />
         <DemoControls status={status} onChange={refresh} />
         {!!error && (
           <View style={{ gap: 8 }} testID="properties-error">
@@ -128,7 +150,7 @@ export default function Properties() {
                 <View style={{ flex: 1 }}>
                   <H size={22} testID={`property-card-${p.id}-name`}>{p.name}</H>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
-                    <Icon name="map-pin" size={13} color={colors.muted} /><T size={14} muted>{p.city}</T>
+                    <Icon name="map-pin" size={13} color={colors.muted} /><T size={14} muted numberOfLines={1} style={{ flexShrink: 1 }}>{p.city || p.address || "No address yet"}</T>
                   </View>
                 </View>
                 {p.amenities.length === 0 ? <Badge label="No amenities yet" /> : gaps > 0 ? <Badge kind="warn" label={`${gaps} ${gaps === 1 ? "gap" : "gaps"}`} /> : <Badge kind="ready" label="All covered" />}
@@ -138,6 +160,7 @@ export default function Properties() {
                   {p.amenities.map((a: any) => <View key={a.id} style={s.cell}><AmenityTile a={a} /></View>)}
                 </View>
               )}
+              <RoomsFooter p={p} />
             </Card>
           );
         })}
@@ -152,4 +175,5 @@ const useStyles = makeStyles((c) => ({
   tile: { minHeight: 116, borderRadius: 16, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surface, padding: 10, gap: 8 },
   tileIcon: { width: 34, height: 34, borderRadius: 8, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surfaceSecondary, alignItems: "center", justifyContent: "center" },
   setupIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: c.surfaceSecondary, borderWidth: 1.5, borderColor: c.border, alignItems: "center", justifyContent: "center" },
+  foot: { gap: 10, paddingTop: 12, borderTopWidth: 1.5, borderTopColor: c.border },
 }));

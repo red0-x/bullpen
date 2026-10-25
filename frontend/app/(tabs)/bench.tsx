@@ -3,6 +3,7 @@ import { View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { api, errorText } from "@/src/api";
 import { useContractorActions } from "@/src/contractorActions";
+import { getLastRental, setLastRental } from "@/src/lastRental";
 import { toast } from "@/src/toast";
 import { makeStyles, useTheme } from "@/src/theme";
 import { Screen } from "@/src/components/Screen";
@@ -23,10 +24,27 @@ export default function Bench() {
   const [tab, setTab] = useState<string>(params.tab || "bench");
   const [data, setData] = useState<any>(null);
   const [adding, setAdding] = useState<any>(null);
+  const [sel, setSel] = useState<string | null>(null); // rental id, or "all"
 
   const load = useCallback(() => api("/bench").then(setData).catch((e) => toast.error(errorText(e))), []);
   const actions = useContractorActions(load);
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(); getLastRental().then(setSel); }, [load]));
+
+  const props: any[] = data?.properties || [];
+  // Open on the rental the host last used; first rental if none yet.
+  const shown = sel && (sel === "all" || props.some((p) => p.id === sel)) ? sel : props[0]?.id;
+  const visible = props.length < 2 || shown === "all" ? props : props.filter((p) => p.id === shown);
+  const choose = (id: string) => { setSel(id); setLastRental(id); };
+
+  // Coming from a Rentals amenity tile: show the rental that owns it, then drop ?focus= so a later manual pick sticks.
+  const [highlight, setHighlight] = useState<string | null>(null);
+  useEffect(() => {
+    const owner = params.focus && props.find((p) => p.amenities.some((a: any) => a.id === params.focus));
+    if (!owner) return;
+    setHighlight(params.focus!);
+    if (shown !== "all" && shown !== owner.id) choose(owner.id);
+    router.setParams({ focus: undefined });
+  }, [params.focus, data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (params.tab) setTab(params.tab);
@@ -53,18 +71,29 @@ export default function Bench() {
             {tab === "bench" && (
               <>
                 <Btn label="+ Add contractor" variant="secondary" onPress={() => setAdding({})} testID="bench-add-contractor-button" />
-                {data.properties.length === 0 ? (
+                {props.length >= 2 && (
+                  <ChipRow testID="bench-rental-select">
+                    {props.map((p) => <Chip key={p.id} label={p.name} on={shown === p.id} onPress={() => choose(p.id)} testID={`bench-rental-option-${p.id}`} />)}
+                    <Chip label="All rentals" on={shown === "all"} onPress={() => choose("all")} testID="bench-rental-option-all" />
+                  </ChipRow>
+                )}
+                {props.length === 0 ? (
                   <EmptyState testID="bench-empty-state" title="No properties yet" body="Load the demo on the Rentals tab, or import contacts to start your bench." />
                 ) : (
                   <View style={{ gap: 24 }} testID="slot-bench">
-                    {data.properties.map((p: any) => (
+                    {visible.map((p: any) => (
                       <View key={p.id} style={{ gap: 12 }}>
                         <View>
                           <H size={26}>{p.name}</H>
-                          <T size={14} muted>{p.city}</T>
+                          <T size={14} muted numberOfLines={1}>{p.city || p.address}</T>
                         </View>
+                        {p.amenities.length === 0 && (
+                          <Card testID={`bench-no-amenities-${p.id}`}>
+                            <T size={14} muted>No amenities tracked here yet. Add a contractor to start this rental&apos;s bench.</T>
+                          </Card>
+                        )}
                         {p.amenities.map((a: any) => (
-                          <Card key={a.id} style={[{ gap: 10 }, params.focus === a.id && { borderColor: colors.brand }]} testID={`slot-${a.id}`}>
+                          <Card key={a.id} style={[{ gap: 10 }, highlight === a.id && { borderColor: colors.brand }]} testID={`slot-${a.id}`}>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                               <View style={s.icon}><AmenityIcon type={a.type} /></View>
                               <View style={{ flex: 1 }}>

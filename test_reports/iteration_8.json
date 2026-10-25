@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 8: Tested the backend (iter7 + onboarding regression + a new iter8 file) and the frontend on a 375x667 viewport. Backend: 73/73 pass. To get there I updated 3 tests in test_onboarding_iter6.py that were out of date after the intentional iter7 'keep nickname on blank-name update' change. The rule that finishing an extra rental keeps the first setup open (complete:false, first_setup:true) is verified. Frontend: Bench rental switcher works: the first rental shows by default, tapping a chip shows only that rental, the choice survives leaving the tab and a reload, 'All rentals' shows everything, and there are no chips with 1 rental. Amenity-tile focus switches Bench to the owning rental. Snap opens on the remembered rental, and a property picked in Snap is shared with Bench. The multi-rental Samsung fridge guess works: the 'Is it this one?' card switches the badge to the 2nd rental and the link stays hidden while editing. Add-rental and Pin-on-map regressions pass. One functional bug: the Bench focus param stays in the URL, so a manual rental pick is overridden when you come back to the tab.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/issues/diagnose", "issue": "A text-only note ('A bedroom window pane is cracked...') returns ok:true, can_tell:true, trade:null for the demo host. The UI then shows 'We couldn't tell from the photo...' even though no photo was sent (snap.tsx:218). The copy should be note-aware, and the trade should fall back to e.g. Handyman/General."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Bench focus param sticky", "issue": "After tapping an amenity tile on Rentals, Bench is /bench?focus=<amenityId>. If the host then taps a different rental chip, leaves the tab and returns, useFocusEffect -> load() changes `data`, so the focus effect (bench.tsx:40-43) runs again and calls choose(owner), overwriting the manual pick AND the stored last_property. Repro: Bench=Tahoe -> Rentals -> tap Oakland amenity tile -> Bench shows Oakland -> tap Tahoe chip -> Snap tab -> Bench tab -> back on Oakland. Fix: clear focus after applying it (router.setParams({focus: undefined})), or apply focus only once per param value with a ref.", "testID": "bench-rental-option-<id>", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Bench (focus)", "issues": ["The focused slot-<amenityId> is highlighted but not scrolled into view (y~914 on a 667 viewport; ~2500 in 'All rentals'), so the host has to scroll to find it.", "The selected rental chip is not scrolled into view in the horizontal ChipRow (e.g. 'Oakland Duplex' is clipped at the right edge).", "Rental chips expose no selected state to accessibility (aria-selected/accessibilityState missing)."]},
+      {"screen": "Bench (own rentals with no amenities)", "issues": ["A rental with 0 amenities shows only its name and city, with an empty body. Add an empty state per rental (e.g. 'No amenities yet - add one from Rentals')."]},
+      {"screen": "Rentals card (saved as typed / unverified)", "issues": ["The location row shows a pin icon with blank text when city is empty. Show the typed address instead."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter8_features.py", "/app/backend/tests/test_iter7_features.py", "/app/backend/tests/test_onboarding_iter6.py", "/app/backend/tests/seed_ui_iter8.py", "/app/test_reports/pytest/iter8.xml", "/app/test_reports/pytest/iter8_new.xml"],
+  "action_items": [
+    "bench.tsx:40-43: make the focus param one-shot (router.setParams({ focus: undefined }) after choose(owner), or track the last applied focus in a useRef) so a manual chip pick and the remembered rental aren't overwritten when the tab regains focus.",
+    "Optional: scroll the focused slot into view on Bench (ScrollView ref + onLayout y) and scroll the selected chip into view.",
+    "Optional: in snap.tsx:218 use note-aware copy when there's no photo ('We couldn't tell from your description...'), and/or have diagnose fall back to a general trade when can_tell is true but trade is null.",
+    "Optional: per-rental empty state on Bench for rentals with no amenities; show the address when city is blank on Rentals cards."
+  ],
+  "critical_code_review_comments": [
+    "bench.tsx: useFocusEffect runs load() and getLastRental() in parallel with the focus effect. Benign today, but it is the root cause of the sticky-focus bug because the effect depends on `data`.",
+    "snap.tsx autoFill/guessItem: the multi-rental inference (homes.length===1) is correct. If the same appliance kind is tagged in 2+ rentals it falls back to remembered/props[0], which is fine.",
+    "onboarding_routes.complete(): if a host skipped with no address and then finishes an extra rental, they are marked onboarding_complete:true, and GET /onboarding then returns property:null. This is reasonable since no first setup is waiting, but note it.",
+    "lastRental.ts: the 'all' sentinel is shared with Snap; Snap correctly ignores it (props.some check)."
+  ],
+  "updated_files": ["/app/backend/tests/test_onboarding_iter6.py (3 name-fallback tests now use fresh hosts; the old tests didn't match the intentional nickname-keep behavior)", "/app/backend/tests/test_iter8_features.py (new)", "/app/backend/tests/seed_ui_iter8.py (new)"],
+  "success_rate": {"backend": "100% (73/73 after updating 3 out-of-date tests)", "frontend": "93% (14/15 flows; sticky Bench focus fails)"},
+  "seed_data_creation": "Created test_ui8a_* (demo data, 3 rentals), test_ui8b_* (Beach house + Lake cabin with a Samsung RF28R7351SR in the Kitchen), test_ui7_* (1 rental saved as typed, then added 'TEST Ferry flat' and pinned it). All test_* users and their data were deleted afterwards (66 users). Demo host was not touched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run backend with `cd /app/backend && python -m pytest tests/test_iter7_features.py tests/test_iter8_features.py tests/test_onboarding*.py -n 0 -q`. For UI hosts, run `cd /app/backend/tests && python seed_ui_iter8.py` (JSON with emails and ids). Rental memory is in web localStorage via SecureStore, so it doesn't carry across browser sessions. Set it within the session. Eyebrow text renders uppercase, so check 'Step 1 of 3' case-insensitively. Tab testIDs: tab-index, tab-snap, tab-bench, tab-properties. Rental card pin button: property-card-<id>-pin-button.",
+  "rca_of_issue": "Sticky Bench focus: the `focus` search param stays on the bench route after the tile tap. The effect at bench.tsx:40 depends on [params.focus, data], and data is refetched on every tab focus, so the effect calls choose(owner.id) again, overriding the host's later pick and saving it to last_property."
+}

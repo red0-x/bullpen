@@ -151,7 +151,7 @@ export function Notice({ children, kind = "warn", testID }: { children: ReactNod
 export function Chip({ label, on, onPress, testID, warn }: { label: string; on?: boolean; onPress?: () => void; testID?: string; warn?: boolean }) {
   const { colors } = useTheme();
   return (
-    <Pressable testID={testID} onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress?.(); }}
+    <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ selected: !!on }} aria-selected={!!on} hitSlop={{ top: 6, bottom: 6 }} onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress?.(); }}
       style={({ pressed }) => ({ flexShrink: 0, height: 36, transform: [{ scale: pressed ? 0.95 : 1 }], paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.5, justifyContent: "center",
         backgroundColor: on ? colors.surfaceInverse : warn ? colors.warningSoft : colors.surfaceSecondary,
         borderColor: on ? colors.surfaceInverse : warn ? colors.warningBorder : colors.border })}>

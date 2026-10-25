@@ -90,6 +90,7 @@ class Contractor(DocBase):
 class Issue(DocBase):
     property_id: str
     amenity_id: Optional[str] = None
+    item_id: Optional[str] = None  # the tagged appliance/fixture (from room setup) this is about
     photo_url: Optional[str] = None
     host_note: str = ""
     ai_diagnosis: Optional[str] = None
@@ -334,6 +335,11 @@ async def list_properties(host: dict = Depends(current_host)):
     props = await db.properties.find({"host_id": host["id"]}, {"_id": 0}).sort("created_at", 1).to_list(100)
     amenities = await db.amenities.find({"host_id": host["id"]}, {"_id": 0}).to_list(1000)
     contractors = await scored_contractors(host["id"])
+    room_n, item_n = {}, {}
+    for r in await db.rooms.find({"host_id": host["id"]}, {"property_id": 1}).to_list(5000):
+        room_n[r["property_id"]] = room_n.get(r["property_id"], 0) + 1
+    for i in await db.items.find({"host_id": host["id"]}, {"property_id": 1}).to_list(20000):
+        item_n[i["property_id"]] = item_n.get(i["property_id"], 0) + 1
     out = []
     for p in props:
         tiles = []
@@ -343,7 +349,7 @@ async def list_properties(host: dict = Depends(current_host)):
             tiles.append(ser({**a, "active_count": len(active), "total_count": len(bench),
                               "top": [{"id": c["id"], "business_name": c["business_name"], "score": c["score"],
                                        "reason": c["reason"]} for c in active[:3]]}))
-        out.append(ser({**p, "amenities": tiles}))
+        out.append(ser({**p, "amenities": tiles, "rooms_count": room_n.get(p["id"], 0), "items_count": item_n.get(p["id"], 0)}))
     return out
 
 
@@ -379,6 +385,8 @@ async def clear_demo(host_id: str):
     await db.issues.delete_many({"host_id": host_id, "id": {"$in": linked}})
     await db.requests.delete_many({"host_id": host_id, "issue_id": {"$in": linked}})
     await db.issue_photos.delete_many({"host_id": host_id, "issue_id": {"$in": linked}})
+    await db.rooms.delete_many({"host_id": host_id, "property_id": {"$in": demo_props}})
+    await db.items.delete_many({"host_id": host_id, "property_id": {"$in": demo_props}})
     await db.watch_runs.delete_many({"host_id": host_id})
     for coll in DOMAIN:
         await db[coll].delete_many({"host_id": host_id, "demo": True})
@@ -432,6 +440,7 @@ class DiagnoseIn(BaseModel):
 class IssueIn(BaseModel):
     property_id: str
     amenity_id: Optional[str] = None
+    item_id: Optional[str] = None
     trade_needed: str
     urgency: Literal["today", "this_week", "can_wait"]
     host_note: str = Field("", max_length=1000)
@@ -468,9 +477,33 @@ class ResponseIn(BaseModel):
 async def host_catalog(host_id: str) -> list:
     props = await db.properties.find({"host_id": host_id}, {"_id": 0}).sort("created_at", 1).to_list(100)
     amenities = await db.amenities.find({"host_id": host_id}, {"_id": 0}).to_list(1000)
+    rooms = {r["id"]: r for r in await db.rooms.find({"host_id": host_id}, {"_id": 0}).to_list(2000)}
+    items = await db.items.find({"host_id": host_id}, {"_id": 0}).to_list(5000)
     for p in props:
         p["amenities"] = [a for a in amenities if a["property_id"] == p["id"]]
+        p["items"] = [{**i, "room": item_room(rooms.get(i["room_id"]))} for i in items if i["property_id"] == p["id"]]
     return props
+
+
+def item_room(room: Optional[dict]) -> str:
+    return (room.get("label") or (room.get("type") or "").capitalize()) if room else ""
+
+
+def item_text(item: Optional[dict]) -> Optional[str]:
+    """'Samsung RF28R7351SR refrigerator (kitchen)' for contractor messages."""
+    if not item:
+        return None
+    what = " ".join(x for x in (item.get("brand"), item.get("model"), item["name"].lower() if item.get("brand") or item.get("model") else item["name"]) if x)
+    return f"{what} ({item['room'].lower()})" if item.get("room") else what
+
+
+async def get_item(host_id: str, item_id: Optional[str]) -> Optional[dict]:
+    if not item_id:
+        return None
+    item = await db.items.find_one({"id": item_id, "host_id": host_id}, {"_id": 0})
+    if item:
+        item["room"] = item_room(await db.rooms.find_one({"id": item["room_id"]}, {"_id": 0}))
+    return item
 
 
 async def get_owned(coll: str, doc_id: str, host_id: str) -> dict:
@@ -524,6 +557,13 @@ async def diagnose_issue(body: DiagnoseIn, host: dict = Depends(current_host)):
         draft["amenity_id"] = None
     if draft["amenity_id"] and not draft["property_id"]:
         draft["property_id"] = am[draft["amenity_id"]]["property_id"]
+    # Tagged appliance guess: must belong to the chosen rental.
+    items = {i["id"]: i for p in catalog for i in p["items"]}
+    it = items.get(draft.get("item_id"))
+    if not it or (draft["property_id"] and it["property_id"] != draft["property_id"]):
+        draft["item_id"] = None
+    elif not draft["property_id"]:
+        draft["property_id"] = it["property_id"]
     return {"ok": True, "draft": draft}
 
 
@@ -543,6 +583,10 @@ async def create_issue(body: IssueIn, host: dict = Depends(current_host)):
             raise HTTPException(400, "That amenity belongs to another property.")
     if body.trade_needed not in TRADES:
         raise HTTPException(400, "Pick a trade from the list.")
+    if body.item_id:
+        it = await get_owned("items", body.item_id, host["id"])
+        if it["property_id"] != body.property_id:
+            raise HTTPException(400, "That appliance belongs to another property.")
     issue = Issue(host_id=host["id"], **body.model_dump(exclude={"photo_base64"}))
     photo_id = await save_photo(host["id"], issue.id, body.photo_base64)
     if photo_id:
@@ -615,6 +659,7 @@ async def get_issue(issue_id: str, host: dict = Depends(current_host)):
     return {
         "outcomes": [ser({**o, "business_name": names.get(o["contractor_id"], {}).get("business_name")}) for o in outs],
         "issue": ser(issue), "property": ser(prop), "amenity": ser(amenity) if amenity else None,
+        "item": ser(item) if (item := await get_item(host["id"], issue.get("item_id"))) else None,
         "requests": [ser({**r, "no_show": r.get("response") == "booked" and r["contractor_id"] in no_shows,
                           "contractor": {k: names.get(r["contractor_id"], {}).get(k) for k in
                                          ("name", "business_name", "phone")}}) for r in reqs],
@@ -630,9 +675,11 @@ async def draft_request(issue_id: str, body: DraftIn, host: dict = Depends(curre
     c = await get_owned("contractors", body.contractor_id, host["id"])
     amenity = await db.amenities.find_one({"id": issue.get("amenity_id"), "host_id": host["id"]}, {"_id": 0}) \
         if issue.get("amenity_id") else None
+    item = await get_item(host["id"], issue.get("item_id"))
     ctx = {"host_name": host["name"], "contractor_name": c["name"], "business": c["business_name"],
            "property": prop["name"], "address": prop["address"], "trade_needed": issue["trade_needed"],
-           "what_broke": amenity["label"] if amenity else issue["trade_needed"],
+           "what_broke": item["name"] if item else amenity["label"] if amenity else issue["trade_needed"],
+           "appliance": item_text(item),
            "problem": issue.get("ai_diagnosis") or issue.get("host_note") or issue["trade_needed"],
            "urgency": issue.get("urgency"), "guest_arrival": body.guest_arrival_text}
     try:

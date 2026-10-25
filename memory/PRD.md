@@ -57,3 +57,29 @@ See /app/memory/test_credentials.md
 - Camera: added an in-app live camera (expo-camera CameraView, src/onboarding/LiveCamera.tsx) for room photos. It works in Expo Go, native builds and on the web, takes several shots in a row, and handles permissions in-modal, with Settings when blocked.
 - iOS modal timing: on iOS, the picker, camera and AR open after the closing modal's onDismiss; other platforms wait 250ms. This uses useAfterDismiss in useCameraGate.tsx, and Sheet now has an onDismiss prop. The Snap tab now waits 500ms after its permission sheet.
 - Google: Geocoding API and Maps Static API are still off in the user's Google Cloud project.
+
+## 2026-06: Four follow-up features
+- **Live address search:**
+  - GET /api/onboarding/autocomplete returns suggestions as you type. It uses Google Places API (New), which is ON for the key, with a session token. If Google is off, it falls back to OpenStreetMap Photon.
+  - POST /api/onboarding/place turns a Google pick into the address and coordinates.
+  - /onboarding/geocode also falls back to Photon while Geocoding API is off. Denied Google APIs are cached for 5 minutes.
+  - Frontend: src/onboarding/AddressSearch.tsx (debounced, ignores stale responses, shows "Powered by Google" or "© OpenStreetMap contributors").
+- **Pin address later:** Rentals shows "Pin on map" for rentals with geocode.verified=false. It opens /onboarding?pid=X&pin=1, and the live suggestions run on the saved address.
+- **Several rentals:**
+  - /onboarding, /rooms and /review take ?pid=. GET /onboarding?property_id= works for any rental the host owns, including demo ones.
+  - POST /onboarding/property accepts {property_id} (update) or {new:true} (another rental); POST /onboarding/rooms accepts property_id.
+  - Rentals has an "Add a rental" button (/onboarding?new=1), and each card shows rooms and items with Pin and Rooms buttons. /properties returns rooms_count and items_count.
+  - Demo cleanup also removes rooms and items on demo rentals.
+- **Appliance-aware fixes:**
+  - Diagnose sends the tagged items to the AI, which returns item_id; it is checked against the chosen rental.
+  - Snap guesses the item from the AI, or from synonym name matching, and the host confirms or changes it ("Is it this one?").
+  - The issue stores item_id, and GET /issues/{id} returns the item with its room. Drafted contractor messages and the SMS template include brand, model and room. GET /api/inventory lists the items.
+
+## 2026-06: Last-used rental + test fixes (iterations 8–10)
+- Backend tests: test_iter7_features.py now follows the real flow (the host skips first setup, then adds rentals). Run with `-n 0`: 73/73 pass. Finishing an extra rental doesn't mark first setup done.
+- Snap and Bench remember the rental the host last used (src/lastRental.ts, storage key last_property).
+  - Snap saves it on a property chip pick and on Track.
+  - Bench shows rental chips plus "All rentals" when the host has 2 or more. It opens on the last-used rental, else the first.
+  - Bench ?focus= (from a Rentals amenity tile) switches to the owning rental once, then the param is cleared.
+- Polish: the no-photo diagnose message, an empty-amenities card on Bench, the address shown when a rental has no city, and chips that expose their selected state.
+- AR room scan (RoomPlan / munim-xr) can only be checked in a native build, not in Expo Go or the web preview.

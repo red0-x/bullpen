@@ -57,7 +57,9 @@ DIAG_SYSTEM = (
 
 async def diagnose(note: str, image_b64: str | None, properties: list, trades: list, today: str) -> dict:
     catalog = [{"property_id": p["id"], "property": p["name"], "city": p["city"],
-                "amenities": [{"amenity_id": a["id"], "label": a["label"], "trade": a["trade"]} for a in p["amenities"]]}
+                "amenities": [{"amenity_id": a["id"], "label": a["label"], "trade": a["trade"]} for a in p["amenities"]],
+                "tagged_items": [{"item_id": i["id"], "name": i["name"], "room": i.get("room", ""),
+                                  "brand": i.get("brand"), "model": i.get("model")} for i in p.get("items", [])][:60]}
                for p in properties]
     prompt = (
         f"Today is {today}. Host note: {note or '(none)'}\n"
@@ -77,6 +79,8 @@ async def diagnose(note: str, image_b64: str | None, properties: list, trades: l
         "urgency ('today' | 'this_week' | 'can_wait'; today if guests arrive within ~48h or it's unsafe), "
         "property_id (only if the note or photo names or clearly points to one property, e.g. 'Tahoe' or 'the A-frame'; "
         "otherwise null, never guess between properties), amenity_id (best guess within that property, else null), "
+        "item_id (the tagged item from tagged_items that is the broken thing, e.g. the fridge for a leaking refrigerator; "
+        "pick it only if the photo/note clearly shows that kind of item, prefer the chosen property, else null), "
         "guest_arrival (ISO 8601 local datetime like 2026-10-30T16:00 if the note mentions arrival, else null)."
     )
     data = _json(await _run(DIAG_SYSTEM, prompt, image_b64))
@@ -90,6 +94,7 @@ async def diagnose(note: str, image_b64: str | None, properties: list, trades: l
 DRAFT_SYSTEM = (
     "You write short, friendly text messages from a vacation rental host to a local contractor asking for help. "
     "Plain text, 2-4 sentences, under 420 characters, no emojis, no placeholders in brackets. "
+    "If an appliance with brand/model is given, name it exactly so the contractor can bring the right parts. "
     "Sign off with the host's first name."
 )
 
@@ -131,5 +136,6 @@ def template_message(ctx: dict) -> str:
     first = (ctx.get("contractor_name") or "there").split()[0]
     host = (ctx.get("host_name") or "").split()[0] or "your host"
     when = f" Guests arrive {ctx['guest_arrival']}." if ctx.get("guest_arrival") else ""
+    unit = f" It's the {ctx['appliance']}." if ctx.get("appliance") else ""
     return (f"Hi {first}, this is {host}. We have a problem at {ctx.get('address')}: "
-            f"{ctx.get('problem')}.{when} Could you take a look? Let me know when you could come by. Thanks, {host}")
+            f"{ctx.get('problem')}.{unit}{when} Could you take a look? Let me know when you could come by. Thanks, {host}")

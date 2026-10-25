@@ -56,7 +56,9 @@ class TestTrimAndName:
         r = save(u, "   ab    ", {"unverified": True})
         assert r.status_code == 400 and r.json()["detail"] == "Type the full street address."
 
-    def test_name_fallback_my_rental(self, u):
+    # Name fallback applies on a rental's first save; blank-name updates keep the nickname (iter 7), so use fresh hosts.
+    def test_name_fallback_my_rental(self):
+        u = register()
         r = save(u, "   , Reno NV", {"unverified": True}, name="   ")
         assert r.status_code == 200, r.text
         p = r.json()
@@ -64,7 +66,8 @@ class TestTrimAndName:
         st = u.get(f"{API}/onboarding").json()
         assert st["property"]["name"] == "My rental" and st["property"]["address"] == ", Reno NV"
 
-    def test_name_fallback_first_part_trimmed(self, u):
+    def test_name_fallback_first_part_trimmed(self):
+        u = register()
         r = save(u, "  42 Elm St , Reno, NV  ", {"unverified": True})
         assert r.status_code == 200, r.text
         assert r.json()["name"] == "42 Elm St" and r.json()["address"] == "42 Elm St , Reno, NV"
@@ -73,7 +76,8 @@ class TestTrimAndName:
         r = save(u, "42 Elm St, Reno, NV", {"unverified": True}, name="  TEST Cabin  ")
         assert r.status_code == 200 and r.json()["name"] == "TEST Cabin"
 
-    def test_verified_name_from_street(self, u):
+    def test_verified_name_from_street(self):
+        u = register()
         r = save(u, "1 Market St, San Francisco, CA", GEO)
         assert r.status_code == 200, r.text
         assert r.json()["name"] == "1 Market St" and r.json()["geocode"]["verified"] is True

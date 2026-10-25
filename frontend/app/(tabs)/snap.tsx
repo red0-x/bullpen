@@ -8,21 +8,52 @@ import { Screen } from "@/src/components/Screen";
 import { api, errorText } from "@/src/api";
 import { URGENCY } from "@/src/format";
 import { toast } from "@/src/toast";
-import { storage } from "@/src/utils/storage";
+import { getLastRental, setLastRental } from "@/src/lastRental";
 import { makeStyles, useTheme } from "@/src/theme";
 import { FixGuide } from "@/src/components/FixGuide";
 import { DirectoryCard } from "@/src/components/DirectoryCard";
 import { smsUrl } from "@/src/components/issue/RequestSheet";
+import { itemIcon, itemLabel } from "@/src/onboarding/shared";
 import { Badge, Btn, Card, Chip, ChipRow, ConfirmSheet, EmptyState, Field, H, Icon, Mascot, Notice, Sheet, Skeleton, T } from "@/src/ui";
 
-const LAST = "last_property";
 type Photo = { uri: string; base64: string };
 
-function autoFill(g: any, props: any[], remembered: string | null) {
-  const property_id = g.property_id || (props.some((p) => p.id === remembered) ? remembered : props[0]?.id);
+// Words that mean the same appliance, so "fridge" in a diagnosis finds a tagged "Refrigerator".
+const SYNONYMS: [RegExp, string][] = [
+  [/fridge|refrigerator|freezer/, "refrigerator"], [/washing machine|washer/, "washer"], [/dryer/, "dryer"],
+  [/stove|range|cooktop|oven/, "stove"], [/dishwasher/, "dishwasher"], [/water heater|boiler/, "water heater"],
+  [/hot tub|spa|jacuzzi/, "hot tub"], [/\bac\b|air condition|hvac|furnace|heat pump/, "hvac"], [/toilet/, "toilet"],
+  [/shower/, "shower"], [/sink|faucet|tap/, "sink"], [/microwave/, "microwave"], [/tv|television/, "television"],
+  [/disposal/, "disposal"], [/thermostat/, "thermostat"], [/smoke|alarm|detector/, "smoke alarm"],
+];
+const kinds = (text: string) => new Set(SYNONYMS.filter(([re]) => re.test(text)).map(([, k]) => k));
+
+// Tagged items whose kind (fridge, washer…) is mentioned in the diagnosis or note.
+function matchItems(g: any, items: any[]) {
+  const said = kinds(`${g.diagnosis || ""} ${g.note || ""}`.toLowerCase());
+  if (!said.size) return [];
+  return items.filter((i) => [...kinds(i.name.toLowerCase())].some((k) => said.has(k)));
+}
+
+// Bullpen's guess at the tagged appliance: the AI's pick if it's in this rental, else a name match.
+function guessItem(g: any, items: any[], propertyId: string) {
+  const pool = items.filter((i) => i.property_id === propertyId);
+  if (g.item_id && pool.some((i) => i.id === g.item_id)) return g.item_id;
+  return matchItems(g, pool)[0]?.id || null;
+}
+
+function autoFill(g: any, props: any[], remembered: string | null, items: any[]) {
+  let pick = g.property_id;
+  if (!pick) {
+    // No rental named: if the matching appliance lives in exactly one rental, that's the one.
+    const ai = items.find((i) => i.id === g.item_id);
+    const homes = [...new Set((ai ? [ai] : matchItems(g, items)).map((i) => i.property_id))];
+    if (homes.length === 1 && props.some((p) => p.id === homes[0])) pick = homes[0];
+  }
+  const property_id = pick || (props.some((p) => p.id === remembered) ? remembered : props[0]?.id);
   const prop = props.find((p) => p.id === property_id);
   const amenity = prop?.amenities.find((a: any) => a.id === g.amenity_id) || prop?.amenities.find((a: any) => a.trade === g.trade);
-  return { ...g, property_id, amenity_id: amenity?.id || null, urgency: g.urgency || "this_week" };
+  return { ...g, property_id, amenity_id: amenity?.id || null, item_id: guessItem(g, items, property_id), urgency: g.urgency || "this_week" };
 }
 
 async function toJpeg(uri: string): Promise<Photo> {
@@ -92,10 +123,14 @@ function Capture({ onPhoto, onText }: { onPhoto: (p: Photo) => void; onText: (t:
   );
 }
 
-function Summary({ d, props, trades, setD, remembered }: { d: any; props: any[]; trades: string[]; setD: (d: any) => void; remembered: string | null }) {
+function Summary({ d, props, trades, items, setD, remembered }: { d: any; props: any[]; trades: string[]; items: any[]; setD: (d: any) => void; remembered: string | null }) {
   const [edit, setEdit] = useState(false);
+  const { colors } = useTheme();
+  const s = useStyles();
   const prop = props.find((p) => p.id === d.property_id);
   const amenity = prop?.amenities.find((a: any) => a.id === d.amenity_id);
+  const pool = items.filter((i) => i.property_id === d.property_id);
+  const item = pool.find((i) => i.id === d.item_id);
   return (
     <View style={{ gap: 8 }} testID="snap-summary">
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
@@ -103,6 +138,18 @@ function Summary({ d, props, trades, setD, remembered }: { d: any; props: any[];
         <Badge label={`${amenity ? `${amenity.label} · ` : ""}${prop?.name || ""}`} testID="snap-property" />
         <Badge kind="warn" label={URGENCY[d.urgency]} testID="snap-urgency" />
       </View>
+      {item ? (
+        <View style={s.linked} testID="snap-item">
+          <View style={s.linkedIcon}><Icon name={itemIcon(item.name, item.category)} size={18} color={colors.brand} /></View>
+          <View style={{ flex: 1 }}>
+            <T size={12} weight="semi" muted>Is it this one?</T>
+            <T weight="semi" testID="snap-item-label">{itemLabel(item)}</T>
+          </View>
+          <Btn small variant="secondary" label="Change" onPress={() => setEdit(true)} testID="snap-item-change-button" />
+        </View>
+      ) : pool.length > 0 && !edit ? (
+        <Btn variant="link" icon="link" label="Link a tagged appliance" onPress={() => setEdit(true)} testID="snap-item-link-button" />
+      ) : null}
       <Btn variant="link" label={edit ? "Done" : "Wrong? Change"} onPress={() => setEdit(!edit)} testID="snap-change-button" />
       {edit && (
         <View style={{ gap: 6 }}>
@@ -112,8 +159,17 @@ function Summary({ d, props, trades, setD, remembered }: { d: any; props: any[];
           </ChipRow>
           <T size={13} weight="semi">Property</T>
           <ChipRow testID="snap-property-select">
-            {props.map((p) => <Chip key={p.id} label={p.name} on={d.property_id === p.id} onPress={() => setD(autoFill({ ...d, property_id: p.id, amenity_id: null }, props, remembered))} testID={`snap-property-option-${p.id}`} />)}
+            {props.map((p) => <Chip key={p.id} label={p.name} on={d.property_id === p.id} onPress={() => { setLastRental(p.id); setD(autoFill({ ...d, property_id: p.id, amenity_id: null, item_id: null }, props, remembered, items)); }} testID={`snap-property-option-${p.id}`} />)}
           </ChipRow>
+          {pool.length > 0 && (
+            <>
+              <T size={13} weight="semi">Appliance</T>
+              <ChipRow testID="snap-item-select">
+                <Chip label="Not listed" on={!d.item_id} onPress={() => setD({ ...d, item_id: null })} testID="snap-item-option-none" />
+                {pool.map((i) => <Chip key={i.id} label={i.room ? `${i.name} · ${i.room}` : i.name} on={d.item_id === i.id} onPress={() => setD({ ...d, item_id: i.id })} testID={`snap-item-option-${i.id}`} />)}
+              </ChipRow>
+            </>
+          )}
           <T size={13} weight="semi">Urgency</T>
           <ChipRow testID="snap-urgency-select">
             {Object.entries(URGENCY).map(([k, v]) => <Chip key={k} label={v} on={d.urgency === k} onPress={() => setD({ ...d, urgency: k })} testID={`snap-urgency-option-${k}`} />)}
@@ -130,6 +186,7 @@ export default function Snap() {
   const s = useStyles();
   const [props, setProps] = useState<any[] | null>(null);
   const [trades, setTrades] = useState<string[]>([]);
+  const [items, setItems] = useState<any[]>([]);
   const [remembered, setRemembered] = useState<string | null>(null);
   const [step, setStep] = useState<"capture" | "thinking" | "retry" | "results">("capture");
   const [input, setInput] = useState<{ photo: Photo | null; note: string }>({ photo: null, note: "" });
@@ -141,7 +198,8 @@ export default function Snap() {
 
   useFocusEffect(useCallback(() => {
     Promise.all([api("/properties"), api("/trades")]).then(([p, t]) => { setProps(p); setTrades(t); }).catch((e) => toast.error(errorText(e)));
-    storage.getItem(LAST, null as string | null).then(setRemembered);
+    api("/inventory").then(setItems).catch(() => setItems([]));
+    getLastRental().then(setRemembered);
   }, []));
 
   useEffect(() => {
@@ -157,12 +215,12 @@ export default function Snap() {
     try {
       const r = await api("/issues/diagnose", { method: "POST", body: { photo_base64: photo?.base64 || null, note }, timeout: 60000 });
       if (!r.ok || !r.draft.trade) {
-        setNotice(r.ok ? "We couldn't tell from the photo. Try another angle, closer to the problem, or describe it." : r.message);
+        setNotice(r.ok ? (photo ? "We couldn't tell from the photo. Try another angle, closer to the problem, or describe it." : "We couldn't tell what needs fixing. Add a bit more detail, like what broke and where, or snap a photo.") : r.message);
         return setStep("retry");
       }
       if (r.draft.is_rental_issue === false) setNotice("This doesn't look like part of your rental, but here's how to handle it and who could help.");
       else if (!r.draft.can_tell) setNotice("We weren't fully sure from the photo, so this is our best guess. A closer photo helps.");
-      setD(autoFill({ ...r.draft, diagnosis: r.draft.diagnosis || note }, props || [], remembered));
+      setD(autoFill({ ...r.draft, diagnosis: r.draft.diagnosis || note, note }, props || [], remembered, items));
       setStep("results");
     } catch {
       setNotice("Couldn't read that right now. Try again, or describe it instead.");
@@ -180,11 +238,11 @@ export default function Snap() {
     setBusy(true);
     try {
       const r = await api("/issues", { method: "POST", timeout: 30000, body: {
-        property_id: d.property_id, amenity_id: d.amenity_id, trade_needed: d.trade, urgency: d.urgency, host_note: input.note,
+        property_id: d.property_id, amenity_id: d.amenity_id, item_id: d.item_id || null, trade_needed: d.trade, urgency: d.urgency, host_note: input.note,
         ai_diagnosis: d.diagnosis, fix_steps: d.fix_steps || [], safety_note: d.safety_note || null, diy: d.diy || null,
         guest_arrival: d.guest_arrival ? new Date(d.guest_arrival).toISOString() : null, photo_base64: input.photo?.base64 || null,
       } });
-      await storage.setItem(LAST, d.property_id);
+      setLastRental(d.property_id);
       reset();
       router.push(`/issue/${r.id}`);
     } catch (e) { toast.error(errorText(e)); } finally { setBusy(false); }
@@ -203,7 +261,9 @@ export default function Snap() {
 
   const textBiz = (b: any) => {
     const prop = props?.find((p) => p.id === d.property_id);
-    const msg = `Hi ${b.business_name}, I host a rental (${prop?.name}). ${d.diagnosis} Could you help? Urgency: ${URGENCY[d.urgency]}.`;
+    const item = items.find((i) => i.id === d.item_id);
+    const unit = item ? ` It's the ${itemLabel({ ...item, room: "" })}${item.room ? ` in the ${item.room.toLowerCase()}` : ""}.` : "";
+    const msg = `Hi ${b.business_name}, I host a rental (${prop?.name}). ${d.diagnosis}${unit} Could you help? Urgency: ${URGENCY[d.urgency]}.`;
     Linking.openURL(smsUrl(b.phone, msg)).catch(() => toast.error("Couldn't open Messages on this device."));
   };
 
@@ -244,7 +304,7 @@ export default function Snap() {
             </View>
             <T size={17} testID="snap-diagnosis">{d.diagnosis || `Looks like a ${d.trade.toLowerCase()} job. Add a closer photo for a sharper read.`}</T>
           </View>
-          <Summary d={d} props={props!} trades={trades} setD={setD} remembered={remembered} />
+          <Summary d={d} props={props!} trades={trades} items={items} setD={setD} remembered={remembered} />
           <FixGuide steps={d.fix_steps || []} safety={d.safety_note} diy={d.diy} testID="snap-fix-guide" />
           <Btn label={busy ? "Saving…" : "Track this & see my bench"} busy={busy} onPress={() => track(false)} testID="snap-track-button" />
           <Btn label="New photo" icon="rotate-ccw" variant="secondary" onPress={reset} testID="snap-retake-button" />
@@ -276,4 +336,6 @@ export default function Snap() {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   photo: { width: "100%", height: 240, borderRadius: 16, backgroundColor: c.surface },
+  linked: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 16, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.warningSoft },
+  linkedIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: c.surfaceSecondary, alignItems: "center", justifyContent: "center" },
 }));

@@ -177,7 +177,7 @@ export default function RoomCapture() {
     try {
       if (room?.status !== "complete") await patch({ status: "complete" });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      if (router.canGoBack()) router.back(); else router.replace("/onboarding/rooms");
+      if (router.canGoBack()) router.back(); else router.replace(`/onboarding/rooms?pid=${room?.property_id}`);
     } catch (e) { toast.error(errorText(e)); }
   };
 

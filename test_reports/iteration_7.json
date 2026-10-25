@@ -1,0 +1,41 @@
+{
+  "summary": "Tested 4 features: live address search (Google Places + OSM backup), Pin address later, appliance-aware fixes, and multiple rentals. Backend: all 13 tests in the new test_iter7_features.py pass, and the 54 onboarding regression tests (iterations 3-6) also pass. Google Places autocomplete returns source 'google' with geo:null. /place returns full geo with source 'google'; a bad place_id -> 503. q<3 -> 422. Geocode falls back to OSM Photon (source 'osm', Mountain View result); gibberish -> 422. Multi-rental: new:true creates a rental with onboarding:false and the first-setup rental is untouched. Updating by property_id works; another host -> 404. GET /onboarding?property_id returns rooms and first_setup:false. Rooms attach to the target rental. complete?property_id works. /properties returns rooms_count and items_count. Clearing demo data also deletes rooms/items of demo rentals. Pin later: unverified -> pinned gives verified:true and source 'osm' is kept. /inventory returns the room title. POST /issues rejects an item from another rental (400). GET /issues/{id}.item has brand/model/room. Diagnose guessed item_id and property_id when the rental was named in the note. The AI draft mentions the model. UI at 390x844, all PASS: Pin on map -> /onboarding?pid&pin=1 auto-shows Google suggestions ('Powered by Google') -> pick -> map card with drawn-pin fallback -> Save address -> back to Rentals with toast 'Pinned on the map.' and the pin button gone. Add a rental -> 'Add a rental' title with back button and no skip link -> type -> suggestions -> pick -> Change reopens suggestions -> confirm -> rooms?pid=new -> add Kitchen -> review -> Finish -> celebration 'Back to rentals' -> card reads '1 room · 0 tagged items'. Demo rentals show rooms buttons (5 cards); adding a room to Tahoe gives '1 room · 0 tagged items'. Find address returns the OSM result and auto-picks it; for gibberish it shows an error and 'Save as typed'. Snap: once the right rental is selected, the 'Is it this one?' card shows 'Samsung RF28R7351SR refrigerator · Kitchen'. The snap-item-select chips (Not listed + item) work, and Track issue -> the issue screen shows issue-appliance. The 'Link a tagged appliance' link shows when nothing is guessed. Regression: demo login still redirects to /onboarding (not completed or skipped); Fix-it and Bench tabs load. MAIN GAP: for a host with several rentals, a note that doesn't name the rental ('The fridge is leaking water onto the floor') gets no appliance guess. The AI returns property_id null, the frontend defaults to props[0] (a rental with no items), and the fridge in the other rental is never offered. No deprecated Expo packages detected.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/onboarding/complete?property_id=X", "issue": "Completing an EXTRA rental also sets users.onboarding_complete=true (onboarding_routes.py:495). For a host who skipped first setup, finishing a 2nd rental makes GET /onboarding return complete:true while first_setup is still true and the first rental has onboarding_complete:false. So the Rentals SetupCard (properties.tsx:73 checks ob.complete) disappears even though first setup is unfinished. Only set the user flag when the target property has onboarding:true."},
+      {"endpoint": "POST /api/onboarding/property {property_id, name:''}", "issue": "An update with an empty name replaces the existing nickname with the street (e.g. 'Lake cabin' -> '2 Market St'). The UI pre-fills the nickname, so this only happens if the host clears the field or the API is called directly. Consider keeping existing.name when name is blank on update."},
+      {"endpoint": "GET /api/onboarding/autocomplete", "issue": "There is no region bias: '1600 Amphitheatre Parkway' also suggests 'Mountain View, Cagayan De Oro…' (Philippines). Consider includedRegionCodes:['us'] or a locationBias."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Snap results – appliance guess with several rentals", "issue": "If the note doesn't name a rental, diagnose returns property_id:null and item_id:null. autoFill (snap.tsx:41-45) then picks the remembered rental or props[0], and guessItem only searches that rental. Result: the tagged Samsung fridge in 'TEST Apple house' is not suggested and there is no 'Is it this one?' card or link (the default rental had no items). Fix: when the AI gave no property_id, name-match across ALL items. If exactly one rental has a match, choose that rental and that item.", "testID": "snap-item", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Review Finish -> 'Back to rentals' (non-first rental)", "issue": "review.tsx:48 calls router.replace('/(tabs)/properties') from a pushed stack (Rentals -> rooms -> room -> review). This puts a second tabs navigator on top of the stack: the DOM then has 2 copies of property-card-*-rooms-summary, and Back goes to the old rooms screen. Use router.dismissTo('/(tabs)/properties') or dismissAll() + navigate.", "affected_testIDs": ["onboarding-enter-app-button", "properties-list"]}
+    ],
+    "design_issues": [
+      {"screen": "/onboarding?pid=X&pin=1", "issues": ["The eyebrow reads 'SET UP · STEP 1 OF 3' and the 3-step progress shows even though Pin on map is a single step. Hide Steps or relabel in pin/edit mode."]},
+      {"screen": "Snap results (edit open)", "issues": ["'Link a tagged appliance' stays visible above 'Done' after the edit panel with the Appliance chips is open, which is redundant."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter7_features.py", "/app/backend/tests/seed_ui_iter7.py", "/app/test_reports/pytest/pytest_iter7.xml"],
+  "action_items": [
+    "Snap: when diagnose has no property_id, guess the item across all rentals' inventory and switch the property to the rental owning the single match (snap.tsx autoFill/guessItem). Optionally do the same server-side in diagnose_issue.",
+    "onboarding_routes.py complete(): only set users.onboarding_complete when the target property is the first-setup one (onboarding:true).",
+    "review.tsx enter(): for a non-first rental use router.dismissTo('/(tabs)/properties') instead of replace, so the tabs navigator isn't stacked twice.",
+    "Optional: keep the existing nickname on blank-name updates; add a US region bias to autocomplete; hide 'Step 1 of 3' in pin mode."
+  ],
+  "critical_code_review_comments": [
+    "tests/test_bullpup_api.py (legacy) needs EXPO_PUBLIC_BACKEND_URL exported, and 10 of its tests get 403 because the demo host is gated on onboarding by design. This is a stale suite, not a regression.",
+    "AddressSearch debounce and sequence guard are solid. The session token is renewed after the details call. The OSM credit text is shown when the source is osm."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter7_features.py", "/app/backend/tests/seed_ui_iter7.py"],
+  "success_rate": {"backend": "100% (13/13 new + 54/54 onboarding regression)", "frontend": "~90% (all requested flows pass; the Snap guess fails when the rental isn't named)"},
+  "seed_data_creation": "Created test_ob_*/test_ui7_* users; all removed afterwards (36 users, 409 docs). The demo host was only logged in; onboarding was not completed or skipped.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0 for sequential state (pytest.ini forces xdist). Google Places is ON, Geocoding is OFF (OSM fallback), Static Maps is OFF (drawn pin). To reproduce the Snap guess gap: a host with 2 rentals, the fridge tagged in the 2nd, and a note that doesn't name the rental."
+}

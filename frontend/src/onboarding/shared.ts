@@ -12,10 +12,10 @@ export type Item = {
   photo_url?: string | null; position?: any; frame_point?: { x: number; y: number } | null; source: "ar" | "photo" | "manual";
 };
 export type Room = {
-  id: string; type: string; label: string; status: "in_progress" | "complete"; items: Item[];
+  id: string; property_id: string; type: string; label: string; status: "in_progress" | "complete"; items: Item[];
   scan_data: { frames?: Frame[]; geometry?: any; ar?: any; suggested?: { type?: string; items: Suggestion[]; source?: "photo" | "scan" } };
 };
-export type OnboardingState = { property: any | null; rooms: Room[]; completed_rooms: number; can_finish: boolean; complete: boolean; skipped: boolean };
+export type OnboardingState = { property: any | null; rooms: Room[]; completed_rooms: number; can_finish: boolean; complete: boolean; skipped: boolean; first_setup: boolean };
 export type ItemDraft = Partial<Item> & { room_id: string };
 
 export const ROOM_TYPES: { type: string; label: string; icon: IconName }[] = [
@@ -105,14 +105,23 @@ export async function uploadPhoto(uri: string): Promise<Frame> {
 }
 
 // ---------- State ----------
-export function useOnboarding() {
+// pid = a specific rental (added later, or demo); without it, the first-setup rental.
+export function useOnboarding(pid?: string, enabled = true) {
   const [state, setState] = useState<OnboardingState | null>(null);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
-    try { setState(await api<OnboardingState>("/onboarding")); setError(""); } catch (e) { setError(errorText(e)); }
-  }, []);
+    if (!enabled) return;
+    try { setState(await api<OnboardingState>("/onboarding", { params: pid ? { property_id: pid } : undefined })); setError(""); }
+    catch (e) { setError(errorText(e)); }
+  }, [pid, enabled]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
   return { state, error, load };
 }
+
+// "Samsung RF28 refrigerator · Kitchen"
+export const itemLabel = (i: { name: string; brand?: string | null; model?: string | null; room?: string }) => {
+  const what = [i.brand, i.model].filter(Boolean).length ? `${[i.brand, i.model].filter(Boolean).join(" ")} ${i.name.toLowerCase()}` : i.name;
+  return i.room ? `${what} · ${i.room}` : what;
+};
 
 export const sqft = (m2: number) => Math.round(m2 * 10.7639);

@@ -9,6 +9,7 @@ Room.scan_data holds whatever the capture produced, with the same shape for ever
 import base64
 import logging
 import os
+import time
 import uuid
 from datetime import datetime
 from typing import Dict, List, Literal, Optional, Union
@@ -130,15 +131,23 @@ class GeocodeIn(BaseModel):
     address: str = Field(min_length=5, max_length=300)
 
 
+class PlaceIn(BaseModel):
+    place_id: str = Field(min_length=1, max_length=300)
+    session: str = Field("", max_length=100)
+
+
 class PropertyIn(BaseModel):
     name: str = Field("", max_length=80)
     address: str = Field(min_length=5, max_length=300)
     geocode: dict
+    property_id: Optional[str] = None  # update this rental (any of the host's, incl. demo)
+    new: bool = False  # add another rental instead of editing the first-setup one
 
 
 class RoomIn(BaseModel):
     type: str = Field(min_length=1, max_length=40)
     label: str = Field("", max_length=80)
+    property_id: Optional[str] = None
 
 
 class RoomPatch(BaseModel):
@@ -181,6 +190,13 @@ async def onboarding_property(host_id: str) -> Optional[dict]:
     return await db.properties.find_one({"host_id": host_id, "onboarding": True}, {"_id": 0})
 
 
+async def target_property(host_id: str, property_id: Optional[str]) -> Optional[dict]:
+    """A specific rental (any the host owns, demo ones included), else the first-setup rental."""
+    if property_id:
+        return await owned("properties", property_id, host_id)
+    return await onboarding_property(host_id)
+
+
 async def owned(coll: str, doc_id: str, host_id: str) -> dict:
     doc = await db[coll].find_one({"id": doc_id, "host_id": host_id}, {"_id": 0})
     if not doc:
@@ -201,11 +217,149 @@ def component(components: list, *types: str, short: bool = False) -> str:
     return ""
 
 
+# Free OpenStreetMap fallback (Photon by Komoot) while Google lookups are switched off.
+PHOTON_URL = "https://photon.komoot.io/api/"
+PHOTON_HEADERS = {"User-Agent": "Bullpen/1.0 (rental maintenance app; support@emergent.sh)", "Accept": "application/json"}
+PHOTON_LAYERS = {"house", "street"}
+US_STATES = {"Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR", "California": "CA", "Colorado": "CO",
+             "Connecticut": "CT", "Delaware": "DE", "Florida": "FL", "Georgia": "GA", "Hawaii": "HI", "Idaho": "ID",
+             "Illinois": "IL", "Indiana": "IN", "Iowa": "IA", "Kansas": "KS", "Kentucky": "KY", "Louisiana": "LA",
+             "Maine": "ME", "Maryland": "MD", "Massachusetts": "MA", "Michigan": "MI", "Minnesota": "MN",
+             "Mississippi": "MS", "Missouri": "MO", "Montana": "MT", "Nebraska": "NE", "Nevada": "NV",
+             "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM", "New York": "NY", "North Carolina": "NC",
+             "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK", "Oregon": "OR", "Pennsylvania": "PA",
+             "Rhode Island": "RI", "South Carolina": "SC", "South Dakota": "SD", "Tennessee": "TN", "Texas": "TX",
+             "Utah": "UT", "Vermont": "VT", "Virginia": "VA", "Washington": "WA", "West Virginia": "WV",
+             "Wisconsin": "WI", "Wyoming": "WY", "District of Columbia": "DC"}
+
+
+def photon_geo(f: dict) -> Optional[dict]:
+    p, coords = f.get("properties") or {}, (f.get("geometry") or {}).get("coordinates") or []
+    if len(coords) < 2 or p.get("type") not in PHOTON_LAYERS:
+        return None
+    street = " ".join(x for x in (p.get("housenumber"), p.get("street") or (p.get("name") if p.get("type") == "street" else None)) if x)
+    city = p.get("city") or p.get("town") or p.get("village") or p.get("district") or ""
+    state = US_STATES.get(p.get("state") or "", p.get("state") or "")
+    region = " ".join(x for x in (state, p.get("postcode")) if x)
+    formatted = ", ".join(x for x in (street, city, region, p.get("countrycode") == "US" and "USA" or p.get("country")) if x)
+    if not street or not formatted:
+        return None
+    return {"formatted_address": formatted, "lat": float(coords[1]), "lng": float(coords[0]),
+            "location_type": "ROOFTOP" if p.get("housenumber") else "GEOMETRIC_CENTER", "place_id": None,
+            "partial_match": not p.get("housenumber"), "city": city, "state": state, "postal_code": p.get("postcode") or "",
+            "country": p.get("countrycode") or "", "street": street, "source": "osm"}
+
+
+async def photon_search(q: str, limit: int = 5) -> list:
+    try:
+        async with httpx.AsyncClient(headers=PHOTON_HEADERS, timeout=httpx.Timeout(6.0, connect=3.0)) as client:
+            r = await client.get(PHOTON_URL, params={"q": q, "limit": limit + 3, "lang": "en"})
+        r.raise_for_status()
+        feats = r.json().get("features", [])
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("photon failed: %s", type(e).__name__)
+        raise HTTPException(503, "Address search is unavailable right now. You can save the address as typed.")
+    seen, out = set(), []
+    for f in feats:
+        g = photon_geo(f)
+        if g and g["formatted_address"] not in seen:
+            seen.add(g["formatted_address"])
+            out.append(g)
+    us = [g for g in out if g["country"] == "US"]  # Bullpen rentals are US; other countries only if nothing matched
+    return (us or out)[:limit]
+
+
+# Remember when a Google API is switched off so typing doesn't hit a known-denied API on every keystroke.
+_google_off: Dict[str, float] = {}
+GOOGLE_RETRY_S = 300
+
+
+def google_ok(api: str) -> Optional[str]:
+    key = os.environ.get("GOOGLE_MAPS_API_KEY")
+    if not key or time.monotonic() - _google_off.get(api, -1e9) < GOOGLE_RETRY_S:
+        return None
+    return key
+
+
+def google_denied(api: str, status: str, detail: str = ""):
+    log.warning("google %s unavailable (%s) %s", api, status, detail[:160])
+    _google_off[api] = time.monotonic()
+
+
+async def places_call(method: str, path: str, field_mask: str, json_body: Optional[dict] = None, params: Optional[dict] = None) -> Optional[dict]:
+    """Google Places API (New). Returns None when Places is switched off / denied (caller falls back)."""
+    key = google_ok("places")
+    if not key:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(6.0, connect=3.0)) as client:
+            r = await client.request(method, f"https://places.googleapis.com/v1/{path}", json=json_body, params=params,
+                                     headers={"X-Goog-Api-Key": key, "X-Goog-FieldMask": field_mask})
+        body = r.json() if r.content else {}
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("places failed: %s", type(e).__name__)
+        return None
+    if r.status_code in (401, 403) or (body.get("error") or {}).get("status") == "PERMISSION_DENIED":
+        google_denied("places", str(r.status_code), (body.get("error") or {}).get("message", ""))
+        return None
+    if r.status_code >= 400:
+        log.warning("places status %s", r.status_code)
+        return None
+    return body
+
+
+def places_geo(d: dict) -> dict:
+    comps = [{"types": c.get("types", []), "long_name": c.get("longText", ""), "short_name": c.get("shortText", "")}
+             for c in d.get("addressComponents", [])]
+    loc = d.get("location") or {}
+    street = " ".join(x for x in (component(comps, "street_number"), component(comps, "route")) if x)
+    return {"formatted_address": d.get("formattedAddress", ""), "lat": loc.get("latitude"), "lng": loc.get("longitude"),
+            "location_type": "ROOFTOP" if component(comps, "street_number") else "APPROXIMATE", "place_id": d.get("id"),
+            "partial_match": False, "city": component(comps, "locality", "postal_town", "sublocality", "administrative_area_level_2"),
+            "state": component(comps, "administrative_area_level_1", short=True), "postal_code": component(comps, "postal_code"),
+            "country": component(comps, "country", short=True), "street": street, "source": "google"}
+
+
+@router.get("/onboarding/autocomplete")
+async def autocomplete(q: str = Query(..., min_length=3, max_length=200), session: str = Query("", max_length=100),
+                       host: dict = Depends(current_host)):
+    """Live suggestions while the host types: Google Places first, OpenStreetMap when Google is off."""
+    body = await places_call("POST", "places:autocomplete",
+                             "suggestions.placePrediction.placeId,suggestions.placePrediction.text.text,"
+                             "suggestions.placePrediction.structuredFormat.mainText.text,"
+                             "suggestions.placePrediction.structuredFormat.secondaryText.text",
+                             json_body={"input": q.strip(), "languageCode": "en", "includedRegionCodes": ["us"],
+                                        **({"sessionToken": session} if session else {}),
+                                        "includedPrimaryTypes": ["street_address", "premise", "subpremise", "route"]})
+    if body is not None:
+        out = []
+        for s in body.get("suggestions", [])[:5]:
+            p = s.get("placePrediction") or {}
+            fmt = p.get("structuredFormat") or {}
+            if p.get("placeId"):
+                out.append({"id": p["placeId"], "main": (fmt.get("mainText") or {}).get("text") or (p.get("text") or {}).get("text", ""),
+                            "secondary": (fmt.get("secondaryText") or {}).get("text", ""), "geo": None})
+        return {"source": "google", "suggestions": out}
+    geos = await photon_search(q.strip())
+    return {"source": "osm", "suggestions": [{"id": f"osm:{i}", "main": g["street"],
+                                              "secondary": g["formatted_address"].split(", ", 1)[-1], "geo": g} for i, g in enumerate(geos)]}
+
+
+@router.post("/onboarding/place")
+async def place_details(body: PlaceIn, host: dict = Depends(current_host)):
+    """The picked Google suggestion -> full address with coordinates (ends the autocomplete session)."""
+    d = await places_call("GET", f"places/{body.place_id}", "id,formattedAddress,addressComponents,location",
+                          params={"sessionToken": body.session} if body.session else None)
+    if not d or (d.get("location") or {}).get("latitude") is None:
+        raise HTTPException(503, "Couldn't load that address. Try again, or pick another suggestion.")
+    return places_geo(d)
+
+
 @router.post("/onboarding/geocode")
 async def geocode(body: GeocodeIn, host: dict = Depends(current_host)):
-    key = os.environ.get("GOOGLE_MAPS_API_KEY")
+    key = google_ok("geocode")
     if not key:
-        raise HTTPException(503, "Address lookup isn't set up yet.")
+        return await osm_geocode(body.address)
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=3.0)) as client:
             r = await client.get("https://maps.googleapis.com/maps/api/geocode/json",
@@ -214,14 +368,15 @@ async def geocode(body: GeocodeIn, host: dict = Depends(current_host)):
         payload = r.json()
     except httpx.HTTPError as e:
         log.warning("geocode failed: %s", type(e).__name__)
-        raise HTTPException(503, "Address lookup is unavailable. Try again in a moment.")
+        return await osm_geocode(body.address)
     status = payload.get("status")
     if status == "ZERO_RESULTS" or (status == "OK" and not payload.get("results")):
         raise HTTPException(422, "We couldn't find that address. Check the street, city and zip.")
     if status != "OK":
-        log.warning("geocode status %s: %s", status, payload.get("error_message", "")[:200])
         if status == "REQUEST_DENIED":
-            raise HTTPException(503, "Address lookup isn't switched on yet. You can save the address as typed.")
+            google_denied("geocode", status, payload.get("error_message", ""))
+            return await osm_geocode(body.address)
+        log.warning("geocode status %s: %s", status, payload.get("error_message", "")[:200])
         raise HTTPException(502, "Address lookup returned an error. Try again.")
     out = []
     for res in payload["results"][:3]:
@@ -235,8 +390,16 @@ async def geocode(body: GeocodeIn, host: dict = Depends(current_host)):
             "state": component(comps, "administrative_area_level_1", short=True),
             "postal_code": component(comps, "postal_code"), "country": component(comps, "country", short=True),
             "street": " ".join(x for x in (component(comps, "street_number"), component(comps, "route")) if x),
+            "source": "google",
         })
     return {"results": out}
+
+
+async def osm_geocode(address: str) -> dict:
+    results = await photon_search(address, 3)
+    if not results:
+        raise HTTPException(422, "We couldn't find that address. Check the street, city and zip, or save it as typed.")
+    return {"results": results, "source": "osm"}
 
 
 MAP_STYLE = ["feature:poi|element:labels|visibility:off", "feature:transit|visibility:off",
@@ -248,7 +411,7 @@ MAP_STYLE = ["feature:poi|element:labels|visibility:off", "feature:transit|visib
 async def static_map(lat: float = Query(..., ge=-90, le=90), lng: float = Query(..., ge=-180, le=180),
                      host: dict = Depends(current_host)):
     """Map preview of the confirmed address; the key never leaves the server."""
-    key = os.environ.get("GOOGLE_MAPS_API_KEY")
+    key = google_ok("staticmap")
     if not key:
         raise HTTPException(503, "Maps aren't set up yet.")
     params = [("center", f"{lat},{lng}"), ("zoom", "16"), ("size", "640x320"), ("scale", "2"),
@@ -260,7 +423,10 @@ async def static_map(lat: float = Query(..., ge=-90, le=90), lng: float = Query(
         log.warning("static map failed: %s", type(e).__name__)
         raise HTTPException(503, "Map preview is unavailable.")
     if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image/"):
-        log.warning("static map status %s", r.status_code)
+        if r.status_code == 403:
+            google_denied("staticmap", "403")
+        else:
+            log.warning("static map status %s", r.status_code)
         raise HTTPException(502, "Map preview is unavailable.")
     return Response(r.content, media_type=r.headers["content-type"], headers={"Cache-Control": "private, max-age=86400"})
 
@@ -288,18 +454,24 @@ async def save_property(body: PropertyIn, host: dict = Depends(current_host)):
         for k in ("place_id", "location_type", "city", "state", "postal_code", "country"):
             geo[k] = txt(g.get(k)) or None
         geo["partial_match"] = g.get("partial_match") is True
-    existing = await onboarding_property(host["id"])
-    if existing:
-        await db.properties.update_one({"id": existing["id"]}, {"$set": {"name": name, "address": address, "city": city, "geocode": geo}})
-        return ser(await onboarding_property(host["id"]))
-    prop = Property(host_id=host["id"], name=name, city=city, address=address, geocode=geo, onboarding=True)
+        geo["source"] = g.get("source") if g.get("source") in ("google", "osm") else "google"
+    if body.property_id or not body.new:
+        existing = await target_property(host["id"], body.property_id)
+        if existing:
+            # An empty nickname keeps the rental's current name.
+            keep = body.name.strip() or existing.get("name") or name
+            await db.properties.update_one({"id": existing["id"]}, {"$set": {"name": keep, "address": address, "city": city or existing.get("city", ""), "geocode": geo}})
+            return ser(await owned("properties", existing["id"], host["id"]))
+    # First setup rental (onboarding=True), or another rental the host is adding.
+    first = not body.new and not await onboarding_property(host["id"])
+    prop = Property(host_id=host["id"], name=name, city=city, address=address, geocode=geo, onboarding=first)
     await db.properties.insert_one(prop.model_dump())
     return ser(prop.model_dump())
 
 
 # ---------- State ----------
-async def state(host: dict) -> dict:
-    prop = await onboarding_property(host["id"])
+async def state(host: dict, property_id: Optional[str] = None) -> dict:
+    prop = await target_property(host["id"], property_id)
     rooms = []
     if prop:
         rs = await db.rooms.find({"host_id": host["id"], "property_id": prop["id"]}, {"_id": 0}).sort("created_at", 1).to_list(200)
@@ -310,21 +482,24 @@ async def state(host: dict) -> dict:
     # Rooms are optional: a confirmed address is enough to finish, rooms can be scanned later.
     return {"property": ser(prop) if prop else None, "rooms": rooms, "completed_rooms": len(done),
             "can_finish": bool(prop), "complete": bool(host.get("onboarding_complete")),
-            "skipped": bool(host.get("onboarding_skipped"))}
+            "skipped": bool(host.get("onboarding_skipped")), "first_setup": bool(prop and prop.get("onboarding"))}
 
 
 @router.get("/onboarding")
-async def get_state(host: dict = Depends(current_host)):
-    return await state(host)
+async def get_state(property_id: Optional[str] = None, host: dict = Depends(current_host)):
+    return await state(host, property_id)
 
 
 @router.post("/onboarding/complete")
-async def complete(host: dict = Depends(current_host)):
-    s = await state(host)
+async def complete(property_id: Optional[str] = None, host: dict = Depends(current_host)):
+    s = await state(host, property_id)
     if not s["can_finish"]:
         raise HTTPException(400, "Add your address first.")
     await db.properties.update_one({"id": s["property"]["id"]}, {"$set": {"onboarding_complete": True}})
-    await db.users.update_one({"id": host["id"]}, {"$set": {"onboarding_complete": True}})
+    # Finishing an extra rental only opens the app if there's no unfinished first-setup rental waiting.
+    first = await onboarding_property(host["id"])
+    if s["first_setup"] or not first or first.get("onboarding_complete"):
+        await db.users.update_one({"id": host["id"]}, {"$set": {"onboarding_complete": True}})
     return {"ok": True}
 
 
@@ -338,12 +513,25 @@ async def skip(host: dict = Depends(current_host)):
 # ---------- Rooms ----------
 @router.post("/onboarding/rooms")
 async def add_room(body: RoomIn, host: dict = Depends(current_host)):
-    prop = await onboarding_property(host["id"])
+    prop = await target_property(host["id"], body.property_id)
     if not prop:
         raise HTTPException(400, "Add your address first.")
     room = Room(host_id=host["id"], property_id=prop["id"], type=body.type.strip().lower(), label=body.label.strip())
     await db.rooms.insert_one(room.model_dump())
     return ser({**room.model_dump(), "items": []})
+
+
+def room_title(room: dict) -> str:
+    return room.get("label") or (room.get("type") or "room").capitalize()
+
+
+@router.get("/inventory")
+async def inventory(property_id: Optional[str] = None, host: dict = Depends(current_host)):
+    """Every tagged appliance/fixture (optionally for one rental), with its room, for linking issues."""
+    q = {"host_id": host["id"], **({"property_id": property_id} if property_id else {})}
+    rooms = {r["id"]: r for r in await db.rooms.find(q, {"_id": 0}).to_list(1000)}
+    items = await db.items.find(q, {"_id": 0}).sort("created_at", 1).to_list(5000)
+    return [ser({**i, "room": room_title(rooms[i["room_id"]]) if i["room_id"] in rooms else ""}) for i in items]
 
 
 @router.get("/onboarding/rooms/{room_id}")

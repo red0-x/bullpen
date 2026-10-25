@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pressable, View } from "react-native";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { api, errorText } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { Screen } from "@/src/components/Screen";
@@ -17,7 +17,8 @@ export default function RoomsStep() {
   const { patchUser } = useAuth();
   const { colors } = useTheme();
   const s = useStyles();
-  const { state, error, load } = useOnboarding();
+  const { pid } = useLocalSearchParams<{ pid?: string }>();
+  const { state, error, load } = useOnboarding(pid || undefined);
   const [adding, setAdding] = useState(false);
   const [type, setType] = useState("kitchen");
   const [label, setLabel] = useState("");
@@ -30,7 +31,7 @@ export default function RoomsStep() {
   const create = async () => {
     setBusy("add");
     try {
-      const r = await api<Room>("/onboarding/rooms", { method: "POST", body: { type, label: label.trim() } });
+      const r = await api<Room>("/onboarding/rooms", { method: "POST", body: { type, label: label.trim(), property_id: state?.property?.id } });
       setAdding(false);
       setLabel("");
       router.push(`/onboarding/room/${r.id}`);
@@ -40,7 +41,7 @@ export default function RoomsStep() {
   const starter = async () => {
     setBusy("starter");
     try {
-      for (const t of STARTER) await api("/onboarding/rooms", { method: "POST", body: { type: t, label: "" } });
+      for (const t of STARTER) await api("/onboarding/rooms", { method: "POST", body: { type: t, label: "", property_id: state?.property?.id } });
       await load();
       toast.success("Added 4 rooms. Tap one to scan it.");
     } catch (e) { toast.error(errorText(e)); } finally { setBusy(""); }
@@ -64,8 +65,9 @@ export default function RoomsStep() {
   };
 
   const p = state?.property;
+  const first = !!state?.first_setup;
   return (
-    <Screen back eyebrow="Set up · Step 2 of 3" title="Rooms & appliances" onRefresh={load} testID="onboarding-rooms"
+    <Screen back eyebrow={`${first ? "Set up" : p?.name || "Rental"} · Step 2 of 3`} title="Rooms & appliances" onRefresh={load} testID="onboarding-rooms"
       sub="Scan each room and tag what's in it, so Bullpen knows every appliance when something breaks.">
       <Steps step={1} />
       {!!error && <Notice testID="rooms-error">{error}</Notice>}
@@ -77,7 +79,7 @@ export default function RoomsStep() {
             <T weight="semi" numberOfLines={1}>{p.name}</T>
             <T size={13} muted numberOfLines={1}>{p.address}</T>
           </View>
-          <Btn variant="link" label="Edit" onPress={() => router.push("/onboarding")} testID="rooms-edit-address-button" />
+          <Btn variant="link" label="Edit" onPress={() => router.push(`/onboarding?pid=${p.id}`)} testID="rooms-edit-address-button" />
         </Card>
       )}
 
@@ -97,8 +99,8 @@ export default function RoomsStep() {
 
       {state && (
         <View style={{ gap: 12, marginTop: 8 }}>
-          <Btn big label="Review & finish" icon="arrow-right" onPress={() => router.push("/onboarding/review")} testID="rooms-review-button" />
-          {!state.complete && <Btn variant="link" label="Skip rooms, scan them later" onPress={() => setLaterOpen(true)} style={{ alignSelf: "center" }} testID="rooms-skip-button" />}
+          <Btn big label="Review & finish" icon="arrow-right" onPress={() => router.push(`/onboarding/review?pid=${p?.id}`)} testID="rooms-review-button" />
+          {first && !state.complete && <Btn variant="link" label="Skip rooms, scan them later" onPress={() => setLaterOpen(true)} style={{ alignSelf: "center" }} testID="rooms-skip-button" />}
         </View>
       )}
 
